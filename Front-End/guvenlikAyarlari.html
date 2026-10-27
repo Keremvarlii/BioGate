@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioGate - Güvenlik Ayarları</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="admin-layout">
+        <!-- Sol Menü -->
+        <aside class="sidebar">
+            <div class="brand-logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 22H22L12 2Z" fill="#ffffff" />
+                </svg>
+                <span>BioGate Admin</span>
+            </div>
+            <nav class="nav-menu">
+                <a href="adminAnaSayfa.html" class="nav-item">Canlı Loglar</a>
+                <a href="kullaniciYonetimi.html" class="nav-item">Kullanıcı Yönetimi</a>
+                <a href="guvenlikAyarlari.html" class="nav-item active">Güvenlik Ayarları</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button onclick="window.location.href='anaSayfa.html'" class="logout-btn">Çıkış Yap</button>
+            </div>
+        </aside>
+
+        <!-- Ana İçerik -->
+        <main class="main-content">
+            <header class="top-header">
+                <h2>Güvenlik Ayarları</h2>
+            </header>
+
+            <div class="settings-grid">
+                <!-- Sistem Konfigürasyonu -->
+                <div class="admin-card">
+                    <h3 class="card-title">Sistem Konfigürasyonu</h3>
+                    <form class="admin-form vertical-form">
+                        <div class="form-group">
+                            <label>OTP Geçerlilik Süresi (Dakika)</label>
+                            <input type="number" value="3" min="1" max="10">
+                            <span class="help-text">Şifrenin girilmesi için tanınan maksimum süre.</span>
+                        </div>
+                        <div class="form-group">
+                            <label>Yüz Tanıma Hassasiyet Eşiği (%)</label>
+                            <input type="number" value="90" min="50" max="99">
+                            <span class="help-text">Önerilen minimum değer: 85 (DeepFace VGG-Face)</span>
+                        </div>
+                        <div class="form-group">
+                            <label>İzinsiz Giriş Bildirim E-Postası</label>
+                            <input type="email" value="security@sirket.com">
+                        </div>
+                        <button type="submit" class="btn-primary mt-16">Ayarları Kaydet</button>
+                    </form>
+                </div>
+
+                <!-- Acil Durum Protokolü -->
+                <div class="admin-card alert-bg">
+                    <h3 class="card-title text-danger">Acil Durum Protokolü (Lockdown)</h3>
+                    <p class="lockdown-desc">Tesis içerisinde yangın, saldırı veya sızıntı durumunda tüm geçişleri
+                        geçici olarak durdurur. Yüzü tanınan yetkili personellerin dahi kapıyı açması engellenir.</p>
+                    <button class="btn-danger">Sistemi Kilitle (Lockdown Başlat)</button>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+
+</html>

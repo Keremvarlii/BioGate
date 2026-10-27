@@ -1,0 +1,1378 @@
+--- PROJE DOSYALARI ---
+
+================================================
+DOSYA: Front-End/adminAnaSayfa.html
+================================================
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioGate - Admin</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="admin-layout">
+        
+        <!-- Sol Menü (Sidebar) -->
+        <aside class="sidebar">
+            <div class="brand-logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 22H22L12 2Z" fill="#ffffff"/>
+                </svg>
+                <span>BioGate Admin</span>
+            </div>
+            <nav class="nav-menu">
+                <a href="adminAnaSayfa.html" class="nav-item active">Canlı Loglar</a>
+                <a href="kullaniciYonetimi.html" class="nav-item">Kullanıcı Yönetimi</a>
+                <a href="guvenlikAyarlari.html" class="nav-item">Güvenlik Ayarları</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button onclick="window.location.href='adminGiris.html'" class="logout-btn">Çıkış Yap</button>
+            </div>
+        </aside>
+
+        <!-- Ana İçerik Alanı -->
+        <main class="main-content">
+            <header class="top-header">
+                <h2>Sistem Logları & Güvenlik Paneli</h2>
+                <div class="admin-profile">
+                    <span class="status-dot"></span> Sistem Aktif
+                </div>
+            </header>
+
+            <!-- Özet İstatistik Kartları -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Bugün Başarılı Giriş</h3>
+                    <div class="stat-value text-success">42</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Hatalı OTP Denemesi</h3>
+                    <div class="stat-value text-warning">3</div>
+                </div>
+                <div class="stat-card alert-card">
+                    <h3>Sahte Yüz (Spoofing)</h3>
+                    <div class="stat-value text-danger">1</div>
+                    <p class="stat-desc">Kritik İhlal!</p>
+                </div>
+            </div>
+
+            <!-- Log Tablosu -->
+            <div class="table-container">
+                <div class="table-header">
+                    <h3>Son Giriş Hareketleri</h3>
+                    <button class="refresh-btn">Yenile</button>
+                </div>
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th>Tarih / Saat</th>
+                            <th>Kullanıcı Adı</th>
+                            <th>Olay Türü</th>
+                            <th>Durum</th>
+                            <th>Kanıt Görüntüsü</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log-table-body">
+                        <!-- Örnek Başarılı Log -->
+                        <tr>
+                            <td>24 Ekim 2026, 15:42</td>
+                            <td>Abdül Kerem Varlı</td>
+                            <td>Yüz + OTP Doğrulama</td>
+                            <td><span class="badge badge-success">Başarılı Giriş</span></td>
+                            <td>-</td>
+                        </tr>
+                        <!-- Örnek Hatalı OTP Logu -->
+                        <tr>
+                            <td>24 Ekim 2026, 14:15</td>
+                            <td>Bekir (ID: 02)</td>
+                            <td>OTP Zaman Aşımı</td>
+                            <td><span class="badge badge-warning">Hatalı Şifre</span></td>
+                            <td>-</td>
+                        </tr>
+                        <!-- Örnek Kritik İhlal Logu -->
+                        <tr>
+                            <td>24 Ekim 2026, 10:05</td>
+                            <td>Bilinmiyor</td>
+                            <td>Canlılık Tespiti Başarısız</td>
+                            <td><span class="badge badge-danger">Sahte Yüz (Fotoğraf)</span></td>
+                            <td><a href="#" class="view-image-link">Görüntüyü İncele</a></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+</body>
+</html>
+
+================================================
+DOSYA: Front-End/adminGiris.html
+================================================
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioKilit - Yönetici Girişi</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="login-body">
+    
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="brand-logo justify-center">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L2 22H22L12 2Z" fill="#ffffff"/>
+                    </svg>
+                    <span>BioGate Admin</span>
+                </div>
+                <p class="login-subtitle">Yönetim paneline erişmek için giriş yapın</p>
+            </div>
+
+            <form id="admin-login-form" class="admin-form vertical-form">
+                <div class="form-group">
+                    <label>E-Posta Adresi</label>
+                    <input type="email" id="admin-email" placeholder="admin@biokilit.com" required autofocus>
+                </div>
+                
+                <div class="form-group">
+                    <label>Şifre</label>
+                    <input type="password" id="admin-password" placeholder="••••••••" required>
+                </div>
+
+                <div class="login-options">
+                    <label class="remember-me">
+                        <input type="checkbox">
+                        <span>Beni Hatırla</span>
+                    </label>
+                    <a href="#" class="forgot-password">Şifremi Unuttum</a>
+                </div>
+
+                <button type="submit" class="btn-primary mt-16 login-btn" id="login-btn">Sisteme Giriş Yap</button>
+                
+                <!-- Yeni Eklenen Geri Dönüş Butonu -->
+                <button type="button" class="btn-secondary back-btn" onclick="window.location.href='anaSayfa.html'">Ana Sayfaya Dön</button>
+                
+                <!-- Hata/Başarı Mesajı Alanı -->
+                <div id="login-message" style="text-align: center; margin-top: 15px; font-size: 0.9rem; font-weight: 500;"></div>
+
+            </form>
+        </div>
+        
+        <div class="login-footer">
+            <p>Sistem yetkisiz erişimleri kayıt altına almaktadır.</p>
+        </div>
+    </div>
+
+    <!-- Giriş kontrolünü yapacak olan JS dosyamız -->
+    <script type="module" src="js/adminAuth.js"></script>
+</body>
+</html>
+
+================================================
+DOSYA: Front-End/anaSayfa.html
+================================================
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioGate</title>
+    <link rel="stylesheet" href="css/anaSayfa.css">
+    <!-- Daha modern bir font için Google Fonts (Inter) ekliyoruz -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="split-layout">
+
+        <!-- SOL PANEL: Form Alanı -->
+        <div class="left-panel">
+            <div class="form-wrapper">
+                <!-- Logo Alanı -->
+                <div class="brand-logo" id="secret-admin-trigger" style="cursor: default; user-select: none;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L2 22H22L12 2Z" fill="#111827" />
+                    </svg>
+                    <span>BioGate</span>
+                </div>
+
+                <h1>Kimlik Doğrulama</h1>
+                <p class="subtitle">Yüzünüz doğrulandı. Lütfen cihazınıza gelen 6 haneli şifreyi giriniz.</p>
+
+                <div class="input-group">
+                    <label>Tek Kullanımlık Şifre (OTP)</label>
+                    <div class="otp-inputs" id="otp-container">
+                        <input type="text" maxlength="1" autofocus>
+                        <input type="text" maxlength="1" disabled>
+                        <input type="text" maxlength="1" disabled>
+                        <input type="text" maxlength="1" disabled>
+                        <input type="text" maxlength="1" disabled>
+                        <input type="text" maxlength="1" disabled>
+                    </div>
+                </div>
+
+                <button id="submit-btn" class="submit-btn">Doğrula ve Giriş Yap</button>
+                <div class="status-message" id="status-message"></div>
+
+                <div class="footer-links">
+                    <p>Sorun mu yaşıyorsunuz? <a>IT Destek ile İletişime Geçin</a></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SAĞ PANEL: Kurumsal Bilgi (Görseldeki koyu alan) -->
+        <div class="right-panel">
+            <div class="dark-card">
+                <div class="dark-content">
+                    <h2 class="dark-title">BioGate</h2>
+                    <h3 class="dark-heading">Güvenli Alanlara<br>Hoş Geldiniz</h3>
+                    <p class="dark-text">
+                        Bu sistem, tesis güvenliğini maksimize etmek amacıyla çift aşamalı biyometrik ve dijital
+                        doğrulama kullanmaktadır. Geçişler kayıt altına alınmaktadır.
+                    </p>
+
+                    <!-- Görseldeki alt gri bilgi kartı detayı -->
+                    <div class="info-box">
+                        <h4>İzinsiz geçişler hakkında</h4>
+                        <p>Yetkisiz denemeler anlık olarak güvenlik birimine fotoğraflı olarak raporlanmaktadır.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- JS dosyalarımız aynı kalıyor -->
+    <script type="module" src="js/app.js"></script>
+</body>
+
+</html>
+
+================================================
+DOSYA: Front-End/css/admin.css
+================================================
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #050505; /* Çok koyu bir arka plan */
+    color: #e5e7eb;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.admin-layout {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* --- SOL MENÜ (Sidebar) --- */
+.sidebar {
+    width: 260px;
+    background-color: #0f0f11;
+    border-right: 1px solid #27272a;
+    display: flex;
+    flex-direction: column;
+    padding: 24px 0;
+}
+
+.brand-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 24px;
+    margin-bottom: 40px;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.nav-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 16px;
+    flex: 1;
+}
+
+.nav-item {
+    padding: 12px 16px;
+    border-radius: 8px;
+    text-decoration: none;
+    color: #9ca3af;
+    font-weight: 500;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+}
+
+.nav-item:hover, .nav-item.active {
+    background-color: #27272a;
+    color: #ffffff;
+}
+
+.sidebar-footer {
+    padding: 0 24px;
+}
+
+.logout-btn {
+    width: 100%;
+    padding: 12px;
+    background-color: transparent;
+    border: 1px solid #3f3f46;
+    color: #e5e7eb;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: 0.2s;
+}
+
+.logout-btn:hover {
+    background-color: #3f3f46;
+}
+
+/* --- ANA İÇERİK --- */
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 32px 40px;
+    overflow-y: auto;
+}
+
+.top-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 40px;
+}
+
+.top-header h2 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.admin-profile {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    background-color: #10b981;
+    border-radius: 50%;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+}
+
+/* --- KARTLAR --- */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin-bottom: 40px;
+}
+
+.stat-card {
+    background-color: #0f0f11;
+    border: 1px solid #27272a;
+    border-radius: 16px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+}
+
+.stat-card h3 {
+    font-size: 0.9rem;
+    color: #9ca3af;
+    margin-bottom: 12px;
+    font-weight: 500;
+}
+
+.stat-value {
+    font-size: 2.5rem;
+    font-weight: 700;
+}
+
+.text-success { color: #10b981; }
+.text-warning { color: #f59e0b; }
+.text-danger { color: #ef4444; }
+
+.alert-card {
+    border-color: rgba(239, 68, 68, 0.3);
+    background-color: rgba(239, 68, 68, 0.05);
+}
+
+.stat-desc {
+    margin-top: 8px;
+    font-size: 0.85rem;
+    color: #ef4444;
+    font-weight: 600;
+}
+
+/* --- TABLO --- */
+.table-container {
+    background-color: #0f0f11;
+    border: 1px solid #27272a;
+    border-radius: 16px;
+    padding: 24px;
+    flex: 1;
+}
+
+.table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.refresh-btn {
+    background-color: #ffffff;
+    color: #000000;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.log-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.log-table th {
+    text-align: left;
+    padding: 16px;
+    color: #9ca3af;
+    font-weight: 500;
+    font-size: 0.9rem;
+    border-bottom: 1px solid #27272a;
+}
+
+.log-table td {
+    padding: 16px;
+    font-size: 0.95rem;
+    border-bottom: 1px solid #1f1f22;
+}
+
+.badge {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.badge-success { background-color: rgba(16, 185, 129, 0.1); color: #10b981; }
+.badge-warning { background-color: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.badge-danger { background-color: rgba(239, 68, 68, 0.1); color: #ef4444; }
+
+.view-image-link {
+    color: #3b82f6;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+.view-image-link:hover { text-decoration: underline; }
+
+.mb-24 { margin-bottom: 24px; }
+.mt-16 { margin-top: 16px; }
+
+.admin-card {
+    background-color: #0f0f11;
+    border: 1px solid #27272a;
+    border-radius: 16px;
+    padding: 24px;
+}
+
+.card-title {
+    font-size: 1.1rem;
+    color: #ffffff;
+    margin-bottom: 20px;
+    font-weight: 600;
+}
+
+.admin-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.form-row {
+    display: flex;
+    gap: 20px;
+}
+
+.vertical-form .form-group {
+    width: 100%;
+    margin-bottom: 16px;
+}
+
+.form-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-group label {
+    font-size: 0.85rem;
+    color: #9ca3af;
+    font-weight: 500;
+}
+
+.form-group input, .form-group select {
+    background-color: #18181b;
+    border: 1px solid #3f3f46;
+    color: #ffffff;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+    font-family: 'Inter', sans-serif;
+}
+
+.form-group input:focus, .form-group select:focus {
+    border-color: #3b82f6;
+}
+
+.help-text {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-top: 4px;
+}
+
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.btn-primary {
+    background-color: #ffffff;
+    color: #000000;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.btn-primary:hover { background-color: #e5e7eb; }
+
+.btn-secondary {
+    background-color: transparent;
+    border: 1px solid #3f3f46;
+    color: #ffffff;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.btn-secondary:hover { background-color: #27272a; }
+
+.action-btn {
+    background: none;
+    border: none;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    margin-right: 12px;
+}
+
+.action-btn:hover { text-decoration: underline; }
+
+/* Güvenlik Ayarları Izgarası */
+.settings-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 24px;
+}
+
+.alert-bg {
+    background-color: rgba(239, 68, 68, 0.05);
+    border-color: rgba(239, 68, 68, 0.2);
+}
+
+.lockdown-desc {
+    font-size: 0.9rem;
+    color: #9ca3af;
+    line-height: 1.6;
+    margin-bottom: 24px;
+}
+
+.btn-danger {
+    background-color: #ef4444;
+    color: #ffffff;
+    border: none;
+    padding: 16px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 1rem;
+    width: 100%;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-danger:hover { background-color: #dc2626; }
+
+/* --- ADMİN GİRİŞ SAYFASI ÖZEL STİLLERİ --- */
+body.login-body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    background-color: #050505;
+    background-image: radial-gradient(circle at 50% 0%, #1f1f22 0%, #050505 70%);
+}
+
+.login-container {
+    width: 100%;
+    max-width: 420px;
+    padding: 20px;
+}
+
+.login-card {
+    background-color: #0f0f11;
+    border: 1px solid #27272a;
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.brand-logo.justify-center {
+    justify-content: center;
+    margin-bottom: 12px;
+    padding: 0;
+    font-size: 1.4rem;
+}
+
+.login-subtitle {
+    font-size: 0.9rem;
+    color: #9ca3af;
+}
+
+/* Giriş Formu Detayları */
+.login-options {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: -4px;
+    margin-bottom: 12px;
+    font-size: 0.85rem;
+}
+
+.remember-me {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #9ca3af;
+    cursor: pointer;
+}
+
+.remember-me input {
+    accent-color: #3b82f6;
+    cursor: pointer;
+}
+
+.forgot-password {
+    color: #3b82f6;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.forgot-password:hover {
+    text-decoration: underline;
+}
+
+.login-btn {
+    width: 100%;
+    padding: 14px;
+    font-size: 1rem;
+    margin-top: 16px;
+}
+
+.login-footer {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 0.8rem;
+    color: #4b5563;
+}
+
+.back-btn {
+    width: 100%;
+    padding: 14px;
+    font-size: 0.95rem;
+    margin-top: 12px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+================================================
+DOSYA: Front-End/css/anaSayfa.css
+================================================
+/* Temel Ayarlar */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f4f5f7; /* Görseldeki sol tarafın açık gri tonu */
+    color: #111827;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Bölünmüş Ekran Düzeni */
+.split-layout {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* --- SOL PANEL (Form) --- */
+.left-panel {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+}
+
+.form-wrapper {
+    width: 100%;
+    max-width: 400px;
+}
+
+.brand-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 40px;
+    font-weight: 700;
+    font-size: 1.2rem;
+}
+
+h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.subtitle {
+    font-size: 0.9rem;
+    color: #6b7280;
+    margin-bottom: 32px;
+    line-height: 1.5;
+}
+
+.input-group label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+/* Minimalist OTP Kutucukları */
+.otp-inputs {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 24px;
+}
+
+.otp-inputs input {
+    width: 50px;
+    height: 56px;
+    font-size: 24px;
+    text-align: center;
+    background-color: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    color: #111827;
+    outline: none;
+    transition: all 0.2s ease;
+    font-family: 'Inter', sans-serif;
+}
+
+.otp-inputs input:focus {
+    border-color: #111827;
+    box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.1);
+}
+
+.otp-inputs input:disabled {
+    background-color: #f3f4f6;
+    color: #9ca3af;
+}
+
+/* Görseldeki siyah tok buton stili */
+.submit-btn {
+    width: 100%;
+    background-color: #1a1a1a; /* Görseldeki koyu renk */
+    color: white;
+    border: none;
+    padding: 14px 0;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    margin-bottom: 16px;
+}
+
+.submit-btn:hover {
+    background-color: #000000;
+}
+
+.submit-btn:disabled {
+    background-color: #9ca3af;
+    cursor: not-allowed;
+}
+
+.footer-links {
+    margin-top: 24px;
+    text-align: center;
+    font-size: 0.85rem;
+    color: #6b7280;
+}
+
+.footer-links a {
+    color: #111827;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.status-message {
+    margin-top: 12px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-align: center;
+    min-height: 20px;
+}
+
+.status-message.success { color: #059669; }
+.status-message.error { color: #dc2626; }
+
+/* --- SAĞ PANEL (Koyu Kurumsal Alan) --- */
+.right-panel {
+    flex: 1.2;
+    padding: 24px;
+    display: flex;
+}
+
+.dark-card {
+    background-color: #0f0f11;
+    border-radius: 32px;
+    width: 100%;
+    height: 100%;
+    padding: 60px;
+    color: #ffffff;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Flex yapısını dark-content içine taşıyoruz */
+.dark-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%; /* İçeriği yukarıdan aşağıya tam yayar */
+    align-items: flex-start; /* Tüm öğeleri kusursuz sola hizalar */
+}
+
+.dark-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 80px;
+    width: 100%;
+}
+
+.dark-heading {
+    font-size: 2.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 20px;
+    width: 100%;
+}
+
+.dark-text {
+    font-size: 1rem;
+    color: #9ca3af;
+    line-height: 1.6;
+    max-width: 80%;
+}
+
+/* Bilgi Kartı */
+.info-box {
+    background-color: #27272a; 
+    padding: 30px;
+    border-radius: 20px;
+    max-width: 400px;
+    margin-top: auto; /* Flex container sayesinde diğer içeriklerden ayrılıp en alta yapışır */
+    margin-left: 0; /* Sol hizalamayı sıfırlar */
+    width: 100%;
+}
+
+.info-box h4 {
+    font-size: 1.1rem;
+    margin-bottom: 10px;
+}
+
+.info-box p {
+    font-size: 0.9rem;
+    color: #a1a1aa;
+    line-height: 1.5;
+}
+
+/* Mobil Uyumluluk */
+@media (max-width: 900px) {
+    .split-layout {
+        flex-direction: column;
+    }
+    .right-panel {
+        display: none; /* Mobilde sadece formu göster */
+    }
+    .left-panel {
+        padding: 1rem;
+    }
+}
+
+================================================
+DOSYA: Front-End/guvenlikAyarlari.html
+================================================
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioGate - Güvenlik Ayarları</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="admin-layout">
+        <!-- Sol Menü -->
+        <aside class="sidebar">
+            <div class="brand-logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 22H22L12 2Z" fill="#ffffff" />
+                </svg>
+                <span>BioGate Admin</span>
+            </div>
+            <nav class="nav-menu">
+                <a href="adminAnaSayfa.html" class="nav-item">Canlı Loglar</a>
+                <a href="kullaniciYonetimi.html" class="nav-item">Kullanıcı Yönetimi</a>
+                <a href="guvenlikAyarlari.html" class="nav-item active">Güvenlik Ayarları</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button onclick="window.location.href='adminGiris.html'" class="logout-btn">Çıkış Yap</button>
+            </div>
+        </aside>
+
+        <!-- Ana İçerik -->
+        <main class="main-content">
+            <header class="top-header">
+                <h2>Güvenlik Ayarları</h2>
+            </header>
+
+            <div class="settings-grid">
+                <!-- Sistem Konfigürasyonu -->
+                <div class="admin-card">
+                    <h3 class="card-title">Sistem Konfigürasyonu</h3>
+                    <form class="admin-form vertical-form">
+                        <div class="form-group">
+                            <label>OTP Geçerlilik Süresi (Dakika)</label>
+                            <input type="number" value="3" min="1" max="10">
+                            <span class="help-text">Şifrenin girilmesi için tanınan maksimum süre.</span>
+                        </div>
+                        <div class="form-group">
+                            <label>Yüz Tanıma Hassasiyet Eşiği (%)</label>
+                            <input type="number" value="90" min="50" max="99">
+                            <span class="help-text">Önerilen minimum değer: 85 (DeepFace VGG-Face)</span>
+                        </div>
+                        <div class="form-group">
+                            <label>İzinsiz Giriş Bildirim E-Postası</label>
+                            <input type="email" value="security@sirket.com">
+                        </div>
+                        <button type="submit" class="btn-primary mt-16">Ayarları Kaydet</button>
+                    </form>
+                </div>
+
+                <!-- Acil Durum Protokolü -->
+                <div class="admin-card alert-bg">
+                    <h3 class="card-title text-danger">Acil Durum Protokolü (Lockdown)</h3>
+                    <p class="lockdown-desc">Tesis içerisinde yangın, saldırı veya sızıntı durumunda tüm geçişleri
+                        geçici olarak durdurur. Yüzü tanınan yetkili personellerin dahi kapıyı açması engellenir.</p>
+                    <button class="btn-danger">Sistemi Kilitle (Lockdown Başlat)</button>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+
+</html>
+
+================================================
+DOSYA: Front-End/js/adminAuth.js
+================================================
+document.addEventListener('DOMContentLoaded', () => {
+    const loginForm = document.getElementById('admin-login-form');
+    const emailInput = document.getElementById('admin-email');
+    const passwordInput = document.getElementById('admin-password');
+    const loginMessage = document.getElementById('login-message');
+    const loginBtn = document.getElementById('login-btn');
+
+    loginForm.addEventListener('submit', (e) => {
+        // Formun sayfayı yenilemesini engelliyoruz
+        e.preventDefault();
+
+        const email = emailInput.value;
+        const password = passwordInput.value;
+
+        // Butonu "Bekleniyor" moduna al
+        loginBtn.textContent = "Doğrulanıyor...";
+        loginBtn.disabled = true;
+        loginMessage.textContent = "";
+
+        // Backend API isteğini simüle ediyoruz (1 saniye bekleme)
+        setTimeout(() => {
+            // TEST İÇİN GEÇERLİ BİLGİLER
+            const validEmail = "admin@biokilit.com";
+            const validPassword = "admin";
+
+            if (email === validEmail && password === validPassword) {
+                // Şifre doğruysa
+                loginMessage.style.color = "#10b981"; // Yeşil
+                loginMessage.textContent = "Giriş başarılı, yönlendiriliyorsunuz...";
+                
+                // Yarım saniye sonra asıl panele yönlendir
+                setTimeout(() => {
+                    window.location.href = "adminAnaSayfa.html";
+                }, 500);
+
+            } else {
+                // Şifre yanlışsa
+                loginMessage.style.color = "#ef4444"; // Kırmızı
+                loginMessage.textContent = "Hatalı e-posta veya şifre!";
+                
+                // Butonu eski haline getir
+                loginBtn.textContent = "Sisteme Giriş Yap";
+                loginBtn.disabled = false;
+                passwordInput.value = ""; // Şifre kutusunu temizle
+                passwordInput.focus();
+            }
+        }, 1000);
+    });
+});
+
+================================================
+DOSYA: Front-End/js/apiService.js
+================================================
+export class ApiService {
+    constructor(baseUrl = '') {
+        this.baseUrl = baseUrl;
+    }
+
+    async verifyOTP(otpCode) {
+        // İleride gerçek backend isteği buraya gelecek:
+        // const response = await fetch(`${this.baseUrl}/api/verify`, { ... });
+        
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                // Şimdilik simülasyon (Backend gelene kadar)
+                const isSuccess = (otpCode === "123456"); 
+                resolve({ success: isSuccess });
+            }, 1000);
+        });
+    }
+}
+
+================================================
+DOSYA: Front-End/js/app.js
+================================================
+import { ApiService } from './apiService.js';
+import { UIManager } from './uiManager.js';
+
+class App {
+    constructor() {
+        this.api = new ApiService();
+        this.ui = new UIManager();
+        
+        // Gizli admin girişi için sayaç değişkenleri
+        this.secretClickCount = 0;
+        this.secretClickTimer = null;
+
+        this.bindEvents();
+        this.setupSecretAdminLogin();
+    }
+
+    bindEvents() {
+        this.ui.submitBtn.addEventListener('click', () => this.handleVerification());
+    }
+
+    // 5 Tıklama Mantığını Kuran Fonksiyon
+    setupSecretAdminLogin() {
+        const logoTrigger = document.getElementById('secret-admin-trigger');
+        
+        if (logoTrigger) {
+            logoTrigger.addEventListener('click', () => {
+                this.secretClickCount++;
+                
+                // Önceki zamanlayıcıyı temizle
+                clearTimeout(this.secretClickTimer);
+                
+                // 5 kez tıklandıysa sayfaya yönlendir
+                if (this.secretClickCount >= 5) {
+                    window.location.href = 'adminGiris.html';
+                }
+
+                // Eğer 1.5 saniye içinde yeni bir tıklama gelmezse sayacı sıfırla
+                this.secretClickTimer = setTimeout(() => {
+                    this.secretClickCount = 0;
+                }, 1500);
+            });
+        }
+    }
+
+    async handleVerification() {
+        const otpValue = this.ui.getOTPValue();
+
+        if (otpValue.length !== 6) {
+            this.ui.showError("Lütfen 6 haneli şifreyi eksiksiz giriniz.");
+            return;
+        }
+
+        this.ui.showLoading();
+
+        try {
+            const response = await this.api.verifyOTP(otpValue);
+            
+            if (response.success) {
+                this.ui.showSuccess("✓ Giriş Başarılı! Kapı Açılıyor...");
+            } else {
+                this.ui.showError("✗ Hatalı Şifre. Lütfen tekrar deneyin.");
+            }
+        } catch (error) {
+            this.ui.showError("Sunucu bağlantı hatası oluştu.");
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    new App();
+});
+
+================================================
+DOSYA: Front-End/js/uiManager.js
+================================================
+export class UIManager {
+    constructor() {
+        this.inputs = document.querySelectorAll('.otp-inputs input');
+        this.statusMessage = document.getElementById('status-message');
+        this.submitBtn = document.getElementById('submit-btn');
+        this.setupInputBehaviors();
+    }
+
+    setupInputBehaviors() {
+        this.inputs.forEach((input, index) => {
+            input.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/[^0-9]/g, ''); // Sadece rakam
+                if (e.target.value !== '' && index < this.inputs.length - 1) {
+                    this.inputs[index + 1].disabled = false;
+                    this.inputs[index + 1].focus();
+                }
+            });
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' && e.target.value === '' && index > 0) {
+                    this.inputs[index - 1].focus();
+                    this.inputs[index - 1].value = '';
+                }
+            });
+        });
+    }
+
+    getOTPValue() {
+        let otp = '';
+        this.inputs.forEach(input => otp += input.value);
+        return otp;
+    }
+
+    showLoading() {
+        this.statusMessage.textContent = "Doğrulanıyor...";
+        this.statusMessage.className = "status-message";
+        this.submitBtn.disabled = true;
+    }
+
+    showSuccess(message) {
+        this.statusMessage.textContent = message;
+        this.statusMessage.className = "status-message success";
+        this.submitBtn.disabled = false;
+    }
+
+    showError(message) {
+        this.statusMessage.textContent = message;
+        this.statusMessage.className = "status-message error";
+        this.submitBtn.disabled = false;
+        this.resetInputs();
+    }
+
+    resetInputs() {
+        this.inputs.forEach(input => {
+            input.value = '';
+            input.disabled = true;
+        });
+        this.inputs[0].disabled = false;
+        this.inputs[0].focus();
+    }
+}
+
+================================================
+DOSYA: Front-End/kullaniciYonetimi.html
+================================================
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioKilit - Kullanıcı Yönetimi</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="admin-layout">
+        <!-- Sol Menü -->
+        <aside class="sidebar">
+            <div class="brand-logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 22H22L12 2Z" fill="#ffffff" />
+                </svg>
+                <span>BioGate Admin</span>
+            </div>
+            <nav class="nav-menu">
+                <a href="adminAnaSayfa.html" class="nav-item">Canlı Loglar</a>
+                <a href="kullaniciYonetimi.html" class="nav-item active">Kullanıcı Yönetimi</a>
+                <a href="guvenlikAyarlari.html" class="nav-item">Güvenlik Ayarları</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button onclick="window.location.href='adminGiris.html'" class="logout-btn">Çıkış Yap</button>
+            </div>
+        </aside>
+
+        <!-- Ana İçerik -->
+        <main class="main-content">
+            <header class="top-header">
+                <h2>Kullanıcı Yönetimi</h2>
+            </header>
+
+            <!-- Yeni Kullanıcı Ekleme Formu -->
+            <div class="admin-card mb-24">
+                <h3 class="card-title">Yeni Yetkili Ekle</h3>
+                <form class="admin-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Ad Soyad</label>
+                            <input type="text" placeholder="Örn: Bekir Yılmaz">
+                        </div>
+                        <div class="form-group">
+                            <label>E-Posta Adresi (OTP Gönderimi İçin)</label>
+                            <input type="email" placeholder="ornek@sirket.com">
+                        </div>
+                        <div class="form-group">
+                            <label>Yetki Rolü</label>
+                            <select>
+                                <option>Standart Geçiş</option>
+                                <option>Sistem Yöneticisi (Admin)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary">Kameradan Yüz Tara</button>
+                        <button type="submit" class="btn-primary">Kullanıcıyı Kaydet</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Kullanıcı Listesi -->
+            <div class="table-container">
+                <div class="table-header">
+                    <h3>Kayıtlı Personel Listesi</h3>
+                </div>
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Ad Soyad</th>
+                            <th>E-Posta</th>
+                            <th>Rol</th>
+                            <th>Durum</th>
+                            <th>İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>#001</td>
+                            <td>Abdül Kerem Varlı</td>
+                            <td>kerem@sirket.com</td>
+                            <td>Sistem Yöneticisi</td>
+                            <td><span class="badge badge-success">Aktif</span></td>
+                            <td>
+                                <button class="action-btn text-warning">Askıya Al</button>
+                                <button class="action-btn text-danger">Sil</button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>#002</td>
+                            <td>Bekir</td>
+                            <td>bekir@sirket.com</td>
+                            <td>Standart Geçiş</td>
+                            <td><span class="badge badge-success">Aktif</span></td>
+                            <td>
+                                <button class="action-btn text-warning">Askıya Al</button>
+                                <button class="action-btn text-danger">Sil</button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+</body>
+
+</html>
+

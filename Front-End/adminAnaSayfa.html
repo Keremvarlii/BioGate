@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioGate - Admin</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="admin-layout">
+        
+        <!-- Sol Menü (Sidebar) -->
+        <aside class="sidebar">
+            <div class="brand-logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 22H22L12 2Z" fill="#ffffff"/>
+                </svg>
+                <span>BioGate Admin</span>
+            </div>
+            <nav class="nav-menu">
+                <a href="adminAnaSayfa.html" class="nav-item active">Canlı Loglar</a>
+                <a href="kullaniciYonetimi.html" class="nav-item">Kullanıcı Yönetimi</a>
+                <a href="guvenlikAyarlari.html" class="nav-item">Güvenlik Ayarları</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button onclick="window.location.href='anaSayfa.html'" class="logout-btn">Çıkış Yap</button>
+            </div>
+        </aside>
+
+        <!-- Ana İçerik Alanı -->
+        <main class="main-content">
+            <header class="top-header">
+                <h2>Sistem Logları & Güvenlik Paneli</h2>
+                <div class="admin-profile">
+                    <span class="status-dot"></span> Sistem Aktif
+                </div>
+            </header>
+
+            <!-- Özet İstatistik Kartları -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Bugün Başarılı Giriş</h3>
+                    <div class="stat-value text-success">42</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Hatalı OTP Denemesi</h3>
+                    <div class="stat-value text-warning">3</div>
+                </div>
+                <div class="stat-card alert-card">
+                    <h3>Sahte Yüz (Spoofing)</h3>
+                    <div class="stat-value text-danger">1</div>
+                    <p class="stat-desc">Kritik İhlal!</p>
+                </div>
+            </div>
+
+            <!-- Log Tablosu -->
+            <div class="table-container">
+                <div class="table-header">
+                    <h3>Son Giriş Hareketleri</h3>
+                    <button class="refresh-btn">Yenile</button>
+                </div>
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th>Tarih / Saat</th>
+                            <th>Kullanıcı Adı</th>
+                            <th>Olay Türü</th>
+                            <th>Durum</th>
+                            <th>Kanıt Görüntüsü</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log-table-body">
+                        <!-- Örnek Başarılı Log -->
+                        <tr>
+                            <td>24 Ekim 2026, 15:42</td>
+                            <td>Abdül Kerem Varlı</td>
+                            <td>Yüz + OTP Doğrulama</td>
+                            <td><span class="badge badge-success">Başarılı Giriş</span></td>
+                            <td>-</td>
+                        </tr>
+                        <!-- Örnek Hatalı OTP Logu -->
+                        <tr>
+                            <td>24 Ekim 2026, 14:15</td>
+                            <td>Bekir (ID: 02)</td>
+                            <td>OTP Zaman Aşımı</td>
+                            <td><span class="badge badge-warning">Hatalı Şifre</span></td>
+                            <td>-</td>
+                        </tr>
+                        <!-- Örnek Kritik İhlal Logu -->
+                        <tr>
+                            <td>24 Ekim 2026, 10:05</td>
+                            <td>Bilinmiyor</td>
+                            <td>Canlılık Tespiti Başarısız</td>
+                            <td><span class="badge badge-danger">Sahte Yüz (Fotoğraf)</span></td>
+                            <td><a href="#" class="view-image-link">Görüntüyü İncele</a></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

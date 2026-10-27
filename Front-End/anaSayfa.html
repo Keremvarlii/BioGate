@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioGate</title>
+    <link rel="stylesheet" href="css/anaSayfa.css">
+    <!-- Daha modern bir font için Google Fonts (Inter) ekliyoruz -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="split-layout">
+
+        <!-- SOL PANEL: Form Alanı -->
+        <div class="left-panel">
+            <div class="form-wrapper">
+                <!-- Logo Alanı -->
+                <div class="brand-logo" id="secret-admin-trigger" style="cursor: default; user-select: none;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L2 22H22L12 2Z" fill="#111827" />
+                    </svg>
+                    <span>BioGate</span>
+                </div>
+
+                <h1>Kimlik Doğrulama</h1>
+                <p class="subtitle">Yüzünüz doğrulandı. Lütfen cihazınıza gelen 6 haneli şifreyi giriniz.</p>
+
+                <div class="input-group">
+                    <label>Tek Kullanımlık Şifre (OTP)</label>
+                    <div class="otp-inputs" id="otp-container">
+                        <input type="text" maxlength="1" autofocus>
+                        <input type="text" maxlength="1" disabled>
+                        <input type="text" maxlength="1" disabled>
+                        <input type="text" maxlength="1" disabled>
+                        <input type="text" maxlength="1" disabled>
+                        <input type="text" maxlength="1" disabled>
+                    </div>
+                </div>
+
+                <button id="submit-btn" class="submit-btn">Doğrula ve Giriş Yap</button>
+                <div class="status-message" id="status-message"></div>
+
+                <div class="footer-links">
+                    <p>Sorun mu yaşıyorsunuz? <a>IT Destek ile İletişime Geçin</a></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SAĞ PANEL: Kurumsal Bilgi (Görseldeki koyu alan) -->
+        <div class="right-panel">
+            <div class="dark-card">
+                <div class="dark-content">
+                    <h2 class="dark-title">BioGate</h2>
+                    <h3 class="dark-heading">Güvenli Alanlara<br>Hoş Geldiniz</h3>
+                    <p class="dark-text">
+                        Bu sistem, tesis güvenliğini maksimize etmek amacıyla çift aşamalı biyometrik ve dijital
+                        doğrulama kullanmaktadır. Geçişler kayıt altına alınmaktadır.
+                    </p>
+
+                    <!-- Görseldeki alt gri bilgi kartı detayı -->
+                    <div class="info-box">
+                        <h4>İzinsiz geçişler hakkında</h4>
+                        <p>Yetkisiz denemeler anlık olarak güvenlik birimine fotoğraflı olarak raporlanmaktadır.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- JS dosyalarımız aynı kalıyor -->
+    <script type="module" src="js/app.js"></script>
+</body>
+
+</html>
