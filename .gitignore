@@ -1,0 +1,15 @@
+# Bağımlılıklar (Node.js kütüphaneleri)
+node_modules/
+Back-End/node_modules/
+
+
+# Gizli anahtarlar ve şifreler
+.env
+Back-End/.env
+
+#Kişisel Scriptler
+ozet.js
+ozet.txt
+
+# İşletim sistemi kalıntıları
+.DS_Store
