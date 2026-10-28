@@ -5,45 +5,62 @@ document.addEventListener('DOMContentLoaded', () => {
     const loginMessage = document.getElementById('login-message');
     const loginBtn = document.getElementById('login-btn');
 
-    loginForm.addEventListener('submit', (e) => {
+    loginForm.addEventListener('submit', async (e) => {
         // Formun sayfayı yenilemesini engelliyoruz
         e.preventDefault();
 
-        const email = emailInput.value;
-        const password = passwordInput.value;
+        const email = emailInput.value.trim();
+        const password = passwordInput.value.trim();
 
         // Butonu "Bekleniyor" moduna al
         loginBtn.textContent = "Doğrulanıyor...";
         loginBtn.disabled = true;
         loginMessage.textContent = "";
 
-        // Backend API isteğini simüle ediyoruz (1 saniye bekleme)
-        setTimeout(() => {
-            // TEST İÇİN GEÇERLİ BİLGİLER
-            const validEmail = "admin@biokilit.com";
-            const validPassword = "admin";
+        try {
+            // Backend API'mize gerçek bir POST isteği atıyoruz
+            const response = await fetch('http://127.0.0.1:5001/api/auth/admin-login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email, password })
+            });
 
-            if (email === validEmail && password === validPassword) {
-                // Şifre doğruysa
+            const data = await response.json();
+
+            if (data.success) {
+                // Şifre doğruysa ve JWT Token geldiyse
                 loginMessage.style.color = "#10b981"; // Yeşil
                 loginMessage.textContent = "Giriş başarılı, yönlendiriliyorsunuz...";
-                
+
+                // Güvenlik anahtarını (token) ve kullanıcı bilgisini tarayıcıya kaydet
+                localStorage.setItem('adminToken', data.token);
+                localStorage.setItem('adminUser', JSON.stringify(data.user));
+
                 // Yarım saniye sonra asıl panele yönlendir
                 setTimeout(() => {
                     window.location.href = "adminAnaSayfa.html";
                 }, 500);
 
             } else {
-                // Şifre yanlışsa
+                // Backend'den hata döndüyse (Yanlış şifre vb.)
                 loginMessage.style.color = "#ef4444"; // Kırmızı
-                loginMessage.textContent = "Hatalı e-posta veya şifre!";
-                
+                loginMessage.textContent = data.message || "Hatalı e-posta veya şifre!";
+
                 // Butonu eski haline getir
                 loginBtn.textContent = "Sisteme Giriş Yap";
                 loginBtn.disabled = false;
                 passwordInput.value = ""; // Şifre kutusunu temizle
                 passwordInput.focus();
             }
-        }, 1000);
+        } catch (error) {
+            console.error('Bağlantı Hatası:', error);
+            loginMessage.style.color = "#ef4444";
+            loginMessage.textContent = "Sunucuya bağlanılamadı. Node.js sunucusunu başlattığınızdan emin olun.";
+
+            loginBtn.textContent = "Sisteme Giriş Yap";
+            loginBtn.disabled = false;
+        }
     });
 });
