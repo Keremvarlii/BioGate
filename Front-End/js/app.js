@@ -10,6 +10,9 @@ class App {
         this.secretClickCount = 0;
         this.secretClickTimer = null;
 
+        // GEÇİCİ: Yüz tanıma sistemi gelene kadar test mailimizi "tanınan kişi" olarak sabitliyoruz
+        this.currentRecognizedEmail = "keremvarli1@gmail.com"; 
+
         this.bindEvents();
         this.setupSecretAdminLogin();
     }
@@ -34,10 +37,10 @@ class App {
                     window.location.href = 'adminGiris.html';
                 }
 
-                // Eğer 1.5 saniye içinde yeni bir tıklama gelmezse sayacı sıfırla
+                // Eğer 1 saniye içinde yeni bir tıklama gelmezse sayacı sıfırla
                 this.secretClickTimer = setTimeout(() => {
                     this.secretClickCount = 0;
-                }, 1500);
+                }, 1000);
             });
         }
     }
@@ -53,12 +56,15 @@ class App {
         this.ui.showLoading();
 
         try {
-            const response = await this.api.verifyOTP(otpValue);
+            // Sadece OTP kodunu değil, "kimin" kodu olduğunu da (email) gönderiyoruz
+            const response = await this.api.verifyOTP(this.currentRecognizedEmail, otpValue);
             
             if (response.success) {
-                this.ui.showSuccess("✓ Giriş Başarılı! Kapı Açılıyor...");
+                // Backend'den gelen başarılı mesajını ekrana bas (örn: "Doğrulama başarılı, kapı açılıyor.")
+                this.ui.showSuccess("✓ " + response.message);
             } else {
-                this.ui.showError("✗ Hatalı Şifre. Lütfen tekrar deneyin.");
+                // Backend'den gelen hata mesajını ekrana bas (örn: "Hatalı veya süresi dolmuş kod!")
+                this.ui.showError("✗ " + response.message);
             }
         } catch (error) {
             this.ui.showError("Sunucu bağlantı hatası oluştu.");
