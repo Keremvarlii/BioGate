@@ -9,7 +9,7 @@ async function runTest() {
         await mongoose.connect(process.env.MONGO_URI);
         
         // DİKKAT: Aşağıdaki adresi, telefonunda bildirimini görebileceğin GERÇEK bir e-posta ile değiştir!
-        const gercekMail = "esat.ardac27@gmail.com"; 
+        const gercekMail = "ilkimyigitalp00@gmail.com"; 
         
         // 1. Veritabanındaki admin kullanıcısının mailini gerçek mailinle güncelliyoruz
         await User.findOneAndUpdate({ role: 'admin' }, { email: gercekMail.toLowerCase() });

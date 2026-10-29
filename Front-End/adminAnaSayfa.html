@@ -1,20 +1,23 @@
 <!DOCTYPE html>
 <html lang="tr">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BioGate - Admin</title>
     <link rel="stylesheet" href="css/admin.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="js/adminGuard.js"></script>
 </head>
+
 <body>
     <div class="admin-layout">
-        
+
         <!-- Sol Menü (Sidebar) -->
         <aside class="sidebar">
             <div class="brand-logo">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 2L2 22H22L12 2Z" fill="#ffffff"/>
+                    <path d="M12 2L2 22H22L12 2Z" fill="#ffffff" />
                 </svg>
                 <span>BioGate Admin</span>
             </div>
@@ -24,7 +27,7 @@
                 <a href="guvenlikAyarlari.html" class="nav-item">Güvenlik Ayarları</a>
             </nav>
             <div class="sidebar-footer">
-                <button onclick="window.location.href='anaSayfa.html'" class="logout-btn">Çıkış Yap</button>
+                <button class="logout-btn">Çıkış Yap</button>
             </div>
         </aside>
 
@@ -100,5 +103,7 @@
             </div>
         </main>
     </div>
+    <script src="js/adminPanel.js"></script>
 </body>
+
 </html>
