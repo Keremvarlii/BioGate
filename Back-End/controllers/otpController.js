@@ -1,5 +1,6 @@
 const Otp = require('../models/Otp');
 const User = require('../models/User');
+const Log = require('../models/Log'); // YENİ: Log modelini dahil ettik
 const nodemailer = require('nodemailer');
 
 // E-posta gönderici ayarları (Nodemailer)
@@ -11,7 +12,7 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-// 1. Şifre Üretme ve Gönderme İşlemi
+// 1. Şifre Üretme ve Gönderme İşlemi (Değişiklik yok)
 exports.sendOtp = async (req, res) => {
     try {
         const { email } = req.body;
@@ -20,25 +21,20 @@ exports.sendOtp = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Lütfen e-posta adresi girin.' });
         }
 
-        // Güvenlik: Kullanıcı sistemde kayıtlı mı kontrol et
         const user = await User.findOne({ email: email.toLowerCase().trim() });
         if (!user) {
             return res.status(404).json({ success: false, message: 'Bu e-posta sistemde kayıtlı değil.' });
         }
 
-        // 6 haneli rastgele OTP üret (100000 - 999999 arası)
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
 
-        // Spam'i önlemek için kullanıcının eski OTP kayıtlarını sil
         await Otp.deleteMany({ email: user.email });
 
-        // Yeni kodu veritabanına kaydet (TTL index sayesinde 3 dk sonra silinecek)
         await Otp.create({
             email: user.email,
             otpCode: otpCode
         });
 
-        // Mail içeriğini hazırla ve gönder
         const mailOptions = {
             from: `"BioGate Güvenlik Sistemi" <${process.env.EMAIL_USER}>`,
             to: user.email,
@@ -56,7 +52,6 @@ exports.sendOtp = async (req, res) => {
         };
 
         await transporter.sendMail(mailOptions);
-
         res.status(200).json({ success: true, message: 'OTP e-posta adresinize gönderildi.' });
 
     } catch (error) {
@@ -65,7 +60,7 @@ exports.sendOtp = async (req, res) => {
     }
 };
 
-// 2. Gelen Şifreyi Doğrulama İşlemi
+// 2. Gelen Şifreyi Doğrulama ve Loglama İşlemi
 exports.verifyOtp = async (req, res) => {
     try {
         const { email, otpCode } = req.body;
@@ -74,15 +69,37 @@ exports.verifyOtp = async (req, res) => {
             return res.status(400).json({ success: false, message: 'E-posta ve kod gereklidir.' });
         }
 
+        // Kimin işlem yaptığını bilmek için kullanıcıyı buluyoruz
+        const user = await User.findOne({ email: email.toLowerCase().trim() });
+        
         // Veritabanında eşleşen aktif kodu bul
         const validOtp = await Otp.findOne({ email: email.toLowerCase().trim(), otpCode: otpCode });
 
         if (!validOtp) {
+            // ŞİFRE YANLIŞSA: Veritabanına sarı uyarı logu düş
+            if (user) {
+                await Log.create({
+                    userId: user._id,
+                    userName: user.fullName,
+                    eventType: 'Hatalı Şifre Denemesi',
+                    status: 'warning',
+                    statusText: 'Hatalı OTP'
+                });
+            }
             return res.status(400).json({ success: false, message: 'Hatalı veya süresi dolmuş kod!' });
         }
 
-        // Doğrulama başarılıysa kodu hemen sil (tek kullanımlık olması için)
+        // ŞİFRE DOĞRUYSA: Kodu sil (tek kullanımlık olması için)
         await Otp.deleteOne({ _id: validOtp._id });
+
+        // Veritabanına yeşil başarılı giriş logu düş
+        await Log.create({
+            userId: user._id,
+            userName: user.fullName,
+            eventType: 'Yüz + OTP Doğrulama',
+            status: 'success',
+            statusText: 'Giriş Başarılı'
+        });
 
         res.status(200).json({ success: true, message: 'Doğrulama başarılı, kapı açılıyor.' });
 
