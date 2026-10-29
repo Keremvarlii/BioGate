@@ -1,6 +1,7 @@
 const Otp = require('../models/Otp');
 const User = require('../models/User');
-const Log = require('../models/Log'); // YENİ: Log modelini dahil ettik
+const Log = require('../models/Log');
+const Setting = require('../models/Setting');
 const nodemailer = require('nodemailer');
 
 // E-posta gönderici ayarları (Nodemailer)
@@ -12,7 +13,7 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-// 1. Şifre Üretme ve Gönderme İşlemi (Değişiklik yok)
+// 1. Şifre Üretme ve Gönderme İşlemi
 exports.sendOtp = async (req, res) => {
     try {
         const { email } = req.body;
@@ -24,6 +25,12 @@ exports.sendOtp = async (req, res) => {
         const user = await User.findOne({ email: email.toLowerCase().trim() });
         if (!user) {
             return res.status(404).json({ success: false, message: 'Bu e-posta sistemde kayıtlı değil.' });
+        }
+
+        // Acil durum kontrolü: Sistem kilitliyse şifre bile gönderme
+        const settings = await Setting.findOne();
+        if (settings && settings.isLockdown) {
+            return res.status(403).json({ success: false, message: 'ACİL DURUM: Sistem kilitli. Doğrulama kodları askıya alındı.' });
         }
 
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -69,14 +76,27 @@ exports.verifyOtp = async (req, res) => {
             return res.status(400).json({ success: false, message: 'E-posta ve kod gereklidir.' });
         }
 
-        // Kimin işlem yaptığını bilmek için kullanıcıyı buluyoruz
         const user = await User.findOne({ email: email.toLowerCase().trim() });
+        const settings = await Setting.findOne();
+
+        // YENİ: Lockdown (Acil Durum) Kontrolü
+        if (settings && settings.isLockdown) {
+            if (user) {
+                // Kilitliyken girmeye çalışanı kırmızı logla yakala
+                await Log.create({
+                    userId: user._id,
+                    userName: user.fullName,
+                    eventType: 'Lockdown İhlali Denemesi',
+                    status: 'danger',
+                    statusText: 'Sistem Kilitli'
+                });
+            }
+            return res.status(403).json({ success: false, message: 'ACİL DURUM: Sistem kilitli, tüm geçişler durduruldu!' });
+        }
         
-        // Veritabanında eşleşen aktif kodu bul
         const validOtp = await Otp.findOne({ email: email.toLowerCase().trim(), otpCode: otpCode });
 
         if (!validOtp) {
-            // ŞİFRE YANLIŞSA: Veritabanına sarı uyarı logu düş
             if (user) {
                 await Log.create({
                     userId: user._id,
@@ -89,10 +109,8 @@ exports.verifyOtp = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Hatalı veya süresi dolmuş kod!' });
         }
 
-        // ŞİFRE DOĞRUYSA: Kodu sil (tek kullanımlık olması için)
         await Otp.deleteOne({ _id: validOtp._id });
 
-        // Veritabanına yeşil başarılı giriş logu düş
         await Log.create({
             userId: user._id,
             userName: user.fullName,

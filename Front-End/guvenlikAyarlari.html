@@ -40,35 +40,38 @@
                 <!-- Sistem Konfigürasyonu -->
                 <div class="admin-card">
                     <h3 class="card-title">Sistem Konfigürasyonu</h3>
-                    <form class="admin-form vertical-form">
+                    <form id="settings-form" class="admin-form vertical-form">
                         <div class="form-group">
                             <label>OTP Geçerlilik Süresi (Dakika)</label>
-                            <input type="number" value="3" min="1" max="10">
+                            <input type="number" id="otp-timer" min="1" max="10">
                             <span class="help-text">Şifrenin girilmesi için tanınan maksimum süre.</span>
                         </div>
                         <div class="form-group">
                             <label>Yüz Tanıma Hassasiyet Eşiği (%)</label>
-                            <input type="number" value="90" min="50" max="99">
+                            <input type="number" id="face-threshold" min="50" max="99">
                             <span class="help-text">Önerilen minimum değer: 85 (DeepFace VGG-Face)</span>
                         </div>
                         <div class="form-group">
                             <label>İzinsiz Giriş Bildirim E-Postası</label>
-                            <input type="email" value="security@sirket.com">
+                            <input type="email" id="alert-email">
                         </div>
-                        <button type="submit" class="btn-primary mt-16">Ayarları Kaydet</button>
+                        <button type="submit" class="btn-primary mt-16" id="save-btn">Ayarları Kaydet</button>
+                        <div id="save-message" style="margin-top:10px; font-weight:bold; font-size:14px;"></div>
                     </form>
                 </div>
 
                 <!-- Acil Durum Protokolü -->
                 <div class="admin-card alert-bg">
                     <h3 class="card-title text-danger">Acil Durum Protokolü (Lockdown)</h3>
-                    <p class="lockdown-desc">Tesis içerisinde yangın, saldırı veya sızıntı durumunda tüm geçişleri
-                        geçici olarak durdurur. Yüzü tanınan yetkili personellerin dahi kapıyı açması engellenir.</p>
-                    <button class="btn-danger">Sistemi Kilitle (Lockdown Başlat)</button>
+                    <p class="lockdown-desc">Tesis içerisinde yangın, saldırı veya sızıntı durumunda tüm geçişleri geçici olarak durdurur. Yüzü tanınan yetkili personellerin dahi kapıyı açması engellenir.</p>
+                    <button class="btn-danger" id="lockdown-btn">Sistemi Kilitle (Lockdown Başlat)</button>
                 </div>
             </div>
         </main>
     </div>
+
+    <!-- Ayarları veritabanından çekip kaydeden script -->
+    <script src="js/settings.js"></script>
 </body>
 
 </html>

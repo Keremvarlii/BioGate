@@ -10,6 +10,7 @@ require('dotenv').config();
 const authRoutes = require('./routes/authRoutes');
 const logRoutes = require('./routes/logRoutes');
 const otpRoutes = require('./routes/otpRoutes');
+const settingRoutes = require('./routes/settingRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -22,6 +23,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/logs', logRoutes);
 app.use('/api/otp', otpRoutes);
+app.use('/api/settings', settingRoutes);
 
 // Test Endpoint
 app.get('/', (req, res) => {
