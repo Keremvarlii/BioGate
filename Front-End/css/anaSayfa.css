@@ -1,0 +1,228 @@
+/* Temel Ayarlar */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f4f5f7; /* Görseldeki sol tarafın açık gri tonu */
+    color: #111827;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Bölünmüş Ekran Düzeni */
+.split-layout {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* --- SOL PANEL (Form) --- */
+.left-panel {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+}
+
+.form-wrapper {
+    width: 100%;
+    max-width: 400px;
+}
+
+.brand-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 40px;
+    font-weight: 700;
+    font-size: 1.2rem;
+}
+
+h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.subtitle {
+    font-size: 0.9rem;
+    color: #6b7280;
+    margin-bottom: 32px;
+    line-height: 1.5;
+}
+
+.input-group label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+/* Minimalist OTP Kutucukları */
+.otp-inputs {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 24px;
+}
+
+.otp-inputs input {
+    width: 50px;
+    height: 56px;
+    font-size: 24px;
+    text-align: center;
+    background-color: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    color: #111827;
+    outline: none;
+    transition: all 0.2s ease;
+    font-family: 'Inter', sans-serif;
+}
+
+.otp-inputs input:focus {
+    border-color: #111827;
+    box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.1);
+}
+
+.otp-inputs input:disabled {
+    background-color: #f3f4f6;
+    color: #9ca3af;
+}
+
+/* Görseldeki siyah tok buton stili */
+.submit-btn {
+    width: 100%;
+    background-color: #1a1a1a; /* Görseldeki koyu renk */
+    color: white;
+    border: none;
+    padding: 14px 0;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    margin-bottom: 16px;
+}
+
+.submit-btn:hover {
+    background-color: #000000;
+}
+
+.submit-btn:disabled {
+    background-color: #9ca3af;
+    cursor: not-allowed;
+}
+
+.footer-links {
+    margin-top: 24px;
+    text-align: center;
+    font-size: 0.85rem;
+    color: #6b7280;
+}
+
+.footer-links a {
+    color: #111827;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.status-message {
+    margin-top: 12px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-align: center;
+    min-height: 20px;
+}
+
+.status-message.success { color: #059669; }
+.status-message.error { color: #dc2626; }
+
+/* --- SAĞ PANEL (Koyu Kurumsal Alan) --- */
+.right-panel {
+    flex: 1.2;
+    padding: 24px;
+    display: flex;
+}
+
+.dark-card {
+    background-color: #0f0f11;
+    border-radius: 32px;
+    width: 100%;
+    height: 100%;
+    padding: 60px;
+    color: #ffffff;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Flex yapısını dark-content içine taşıyoruz */
+.dark-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%; /* İçeriği yukarıdan aşağıya tam yayar */
+    align-items: flex-start; /* Tüm öğeleri kusursuz sola hizalar */
+}
+
+.dark-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 80px;
+    width: 100%;
+}
+
+.dark-heading {
+    font-size: 2.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 20px;
+    width: 100%;
+}
+
+.dark-text {
+    font-size: 1rem;
+    color: #9ca3af;
+    line-height: 1.6;
+    max-width: 80%;
+}
+
+/* Bilgi Kartı */
+.info-box {
+    background-color: #27272a; 
+    padding: 30px;
+    border-radius: 20px;
+    max-width: 400px;
+    margin-top: auto; /* Flex container sayesinde diğer içeriklerden ayrılıp en alta yapışır */
+    margin-left: 0; /* Sol hizalamayı sıfırlar */
+    width: 100%;
+}
+
+.info-box h4 {
+    font-size: 1.1rem;
+    margin-bottom: 10px;
+}
+
+.info-box p {
+    font-size: 0.9rem;
+    color: #a1a1aa;
+    line-height: 1.5;
+}
+
+/* Mobil Uyumluluk */
+@media (max-width: 900px) {
+    .split-layout {
+        flex-direction: column;
+    }
+    .right-panel {
+        display: none; /* Mobilde sadece formu göster */
+    }
+    .left-panel {
+        padding: 1rem;
+    }
+}

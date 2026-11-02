@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioKilit - Yönetici Girişi</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="login-body">
+    
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="brand-logo justify-center">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L2 22H22L12 2Z" fill="#ffffff"/>
+                    </svg>
+                    <span>BioGate Admin</span>
+                </div>
+                <p class="login-subtitle">Yönetim paneline erişmek için giriş yapın</p>
+            </div>
+
+            <form id="admin-login-form" class="admin-form vertical-form">
+                <div class="form-group">
+                    <label>E-Posta Adresi</label>
+                    <input type="email" id="admin-email" placeholder="admin@biokilit.com" required autofocus>
+                </div>
+                
+                <div class="form-group">
+                    <label>Şifre</label>
+                    <input type="password" id="admin-password" placeholder="••••••••" required>
+                </div>
+
+                <div class="login-options">
+                    <label class="remember-me">
+                        <input type="checkbox">
+                        <span>Beni Hatırla</span>
+                    </label>
+                    <a href="#" class="forgot-password">Şifremi Unuttum</a>
+                </div>
+
+                <button type="submit" class="btn-primary mt-16 login-btn" id="login-btn">Sisteme Giriş Yap</button>
+                
+                <!-- Yeni Eklenen Geri Dönüş Butonu -->
+                <button type="button" class="btn-secondary back-btn" onclick="window.location.href='anaSayfa.html'">Ana Sayfaya Dön</button>
+                
+                <!-- Hata/Başarı Mesajı Alanı -->
+                <div id="login-message" style="text-align: center; margin-top: 15px; font-size: 0.9rem; font-weight: 500;"></div>
+
+            </form>
+        </div>
+        
+        <div class="login-footer">
+            <p>Sistem yetkisiz erişimleri kayıt altına almaktadır.</p>
+        </div>
+    </div>
+
+    <!-- Giriş kontrolünü yapacak olan JS dosyamız -->
+    <script type="module" src="js/adminAuth.js"></script>
+</body>
+</html>
