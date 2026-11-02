@@ -20,7 +20,7 @@ ozet.txt
 .DS_Store
 
 ================================================
-DOSYA: Back-End/.env
+DOSYA: Back-End\.env
 ================================================
 PORT=5001
 MONGO_URI=mongodb+srv://keremvarli1_db_user:M3DPOubBBgSPsRBE@biogate-db.k3aute9.mongodb.net/biogateDB?retryWrites=true&w=majority
@@ -28,8 +28,9 @@ JWT_SECRET=biogate_guvenlik_anahtari_2026
 EMAIL_USER=biogate.app@gmail.com
 EMAIL_PASS=svnxxjcvcxxiskbu
 
+
 ================================================
-DOSYA: Back-End/controllers/authController.js
+DOSYA: Back-End\controllers\authController.js
 ================================================
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
@@ -103,7 +104,7 @@ exports.adminLogin = async (req, res) => {
 };
 
 ================================================
-DOSYA: Back-End/controllers/logController.js
+DOSYA: Back-End\controllers\logController.js
 ================================================
 const Log = require('../models/Log');
 
@@ -125,10 +126,12 @@ exports.getLogs = async (req, res) => {
 };
 
 ================================================
-DOSYA: Back-End/controllers/otpController.js
+DOSYA: Back-End\controllers\otpController.js
 ================================================
 const Otp = require('../models/Otp');
 const User = require('../models/User');
+const Log = require('../models/Log');
+const Setting = require('../models/Setting');
 const nodemailer = require('nodemailer');
 
 // E-posta gönderici ayarları (Nodemailer)
@@ -149,25 +152,26 @@ exports.sendOtp = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Lütfen e-posta adresi girin.' });
         }
 
-        // Güvenlik: Kullanıcı sistemde kayıtlı mı kontrol et
         const user = await User.findOne({ email: email.toLowerCase().trim() });
         if (!user) {
             return res.status(404).json({ success: false, message: 'Bu e-posta sistemde kayıtlı değil.' });
         }
 
-        // 6 haneli rastgele OTP üret (100000 - 999999 arası)
+        // Acil durum kontrolü: Sistem kilitliyse şifre bile gönderme
+        const settings = await Setting.findOne();
+        if (settings && settings.isLockdown) {
+            return res.status(403).json({ success: false, message: 'ACİL DURUM: Sistem kilitli. Doğrulama kodları askıya alındı.' });
+        }
+
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
 
-        // Spam'i önlemek için kullanıcının eski OTP kayıtlarını sil
         await Otp.deleteMany({ email: user.email });
 
-        // Yeni kodu veritabanına kaydet (TTL index sayesinde 3 dk sonra silinecek)
         await Otp.create({
             email: user.email,
             otpCode: otpCode
         });
 
-        // Mail içeriğini hazırla ve gönder
         const mailOptions = {
             from: `"BioGate Güvenlik Sistemi" <${process.env.EMAIL_USER}>`,
             to: user.email,
@@ -185,7 +189,6 @@ exports.sendOtp = async (req, res) => {
         };
 
         await transporter.sendMail(mailOptions);
-
         res.status(200).json({ success: true, message: 'OTP e-posta adresinize gönderildi.' });
 
     } catch (error) {
@@ -194,7 +197,7 @@ exports.sendOtp = async (req, res) => {
     }
 };
 
-// 2. Gelen Şifreyi Doğrulama İşlemi
+// 2. Gelen Şifreyi Doğrulama ve Loglama İşlemi
 exports.verifyOtp = async (req, res) => {
     try {
         const { email, otpCode } = req.body;
@@ -203,15 +206,48 @@ exports.verifyOtp = async (req, res) => {
             return res.status(400).json({ success: false, message: 'E-posta ve kod gereklidir.' });
         }
 
-        // Veritabanında eşleşen aktif kodu bul
+        const user = await User.findOne({ email: email.toLowerCase().trim() });
+        const settings = await Setting.findOne();
+
+        // YENİ: Lockdown (Acil Durum) Kontrolü
+        if (settings && settings.isLockdown) {
+            if (user) {
+                // Kilitliyken girmeye çalışanı kırmızı logla yakala
+                await Log.create({
+                    userId: user._id,
+                    userName: user.fullName,
+                    eventType: 'Lockdown İhlali Denemesi',
+                    status: 'danger',
+                    statusText: 'Sistem Kilitli'
+                });
+            }
+            return res.status(403).json({ success: false, message: 'ACİL DURUM: Sistem kilitli, tüm geçişler durduruldu!' });
+        }
+        
         const validOtp = await Otp.findOne({ email: email.toLowerCase().trim(), otpCode: otpCode });
 
         if (!validOtp) {
+            if (user) {
+                await Log.create({
+                    userId: user._id,
+                    userName: user.fullName,
+                    eventType: 'Hatalı Şifre Denemesi',
+                    status: 'warning',
+                    statusText: 'Hatalı OTP'
+                });
+            }
             return res.status(400).json({ success: false, message: 'Hatalı veya süresi dolmuş kod!' });
         }
 
-        // Doğrulama başarılıysa kodu hemen sil (tek kullanımlık olması için)
         await Otp.deleteOne({ _id: validOtp._id });
+
+        await Log.create({
+            userId: user._id,
+            userName: user.fullName,
+            eventType: 'Yüz + OTP Doğrulama',
+            status: 'success',
+            statusText: 'Giriş Başarılı'
+        });
 
         res.status(200).json({ success: true, message: 'Doğrulama başarılı, kapı açılıyor.' });
 
@@ -222,7 +258,154 @@ exports.verifyOtp = async (req, res) => {
 };
 
 ================================================
-DOSYA: Back-End/middleware/authMiddleware.js
+DOSYA: Back-End\controllers\settingController.js
+================================================
+const Setting = require('../models/Setting');
+
+// Ayarları Getir (Yoksa varsayılanı oluşturur)
+exports.getSettings = async (req, res) => {
+    try {
+        let settings = await Setting.findOne();
+        if (!settings) {
+            settings = await Setting.create({});
+        }
+        res.status(200).json({ success: true, data: settings });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Ayarlar getirilemedi.' });
+    }
+};
+
+// Ayarları Güncelle
+exports.updateSettings = async (req, res) => {
+    try {
+        const { otpExpirationTimer, faceRecognitionThreshold, alertEmail, isLockdown } = req.body;
+        let settings = await Setting.findOne();
+        
+        if (!settings) settings = new Setting({});
+
+        if (otpExpirationTimer !== undefined) settings.otpExpirationTimer = otpExpirationTimer;
+        if (faceRecognitionThreshold !== undefined) settings.faceRecognitionThreshold = faceRecognitionThreshold;
+        if (alertEmail !== undefined) settings.alertEmail = alertEmail;
+        if (isLockdown !== undefined) settings.isLockdown = isLockdown;
+
+        await settings.save();
+        res.status(200).json({ success: true, message: 'Ayarlar başarıyla güncellendi.', data: settings });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Ayarlar güncellenemedi.' });
+    }
+};
+
+================================================
+DOSYA: Back-End\controllers\userController.js
+================================================
+const User = require('../models/User');
+
+// 1. Tüm Kullanıcıları Getir
+exports.getAllUsers = async (req, res) => {
+    try {
+        const users = await User.find().sort({ createdAt: -1 });
+        res.status(200).json({ success: true, count: users.length, data: users });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Kullanıcılar getirilemedi.' });
+    }
+};
+
+// 2. Yeni Kullanıcı Ekle
+exports.createUser = async (req, res) => {
+    try {
+        const { fullName, email, role } = req.body;
+
+        if (!fullName || !email) {
+            return res.status(400).json({ success: false, message: 'Ad Soyad ve E-Posta zorunludur.' });
+        }
+
+        const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
+        if (existingUser) {
+            return res.status(400).json({ success: false, message: 'Bu e-posta adresi zaten kayıtlı.' });
+        }
+
+        const user = await User.create({
+            fullName,
+            email: email.toLowerCase().trim(),
+            role: role || 'standard'
+        });
+
+        res.status(201).json({ success: true, message: 'Kullanıcı başarıyla eklendi.', data: user });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Kullanıcı eklenirken hata oluştu.' });
+    }
+};
+
+// 3. Kullanıcıyı Askıya Al / Aktif Et
+exports.toggleUserStatus = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı.' });
+        }
+
+        // Adminin kendisini yanlışlıkla kilitlemesini engelliyoruz
+        if (user.role === 'admin' && req.user.id === user._id.toString()) {
+            return res.status(403).json({ success: false, message: 'Kendinizi askıya alamazsınız!' });
+        }
+
+        user.isActive = !user.isActive;
+        await user.save();
+
+        res.status(200).json({ success: true, message: `Kullanıcı ${user.isActive ? 'aktif edildi' : 'askıya alındı'}.` });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Durum güncellenemedi.' });
+    }
+};
+
+// 4. Kullanıcıyı Sil
+exports.deleteUser = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı.' });
+        }
+
+        // Ana admin hesabının silinmesini engelliyoruz
+        if (user.role === 'admin') {
+            return res.status(403).json({ success: false, message: 'Sistem yöneticisi silinemez!' });
+        }
+
+        await User.deleteOne({ _id: user._id });
+        res.status(200).json({ success: true, message: 'Kullanıcı sistemden silindi.' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Kullanıcı silinemedi.' });
+    }
+};
+
+// Kullanıcının yüz verisini (faceDescriptor) güncelleme
+exports.updateUserFace = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { faceDescriptor } = req.body; // Python'dan gelecek yüz vektör dizisi
+
+        const updatedUser = await User.findByIdAndUpdate(
+            id,
+            { faceDescriptor },
+            { new: true }
+        );
+
+        if (!updatedUser) {
+            return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı.' });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Yüz verisi başarıyla kaydedildi!',
+            data: updatedUser
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Sunucu hatası: ' + error.message });
+    }
+};
+
+================================================
+DOSYA: Back-End\middleware\authMiddleware.js
 ================================================
 const jwt = require('jsonwebtoken');
 
@@ -256,7 +439,7 @@ module.exports = (req, res, next) => {
 };
 
 ================================================
-DOSYA: Back-End/models/Log.js
+DOSYA: Back-End\models\Log.js
 ================================================
 const mongoose = require('mongoose');
 
@@ -294,7 +477,7 @@ const logSchema = new mongoose.Schema({
 module.exports = mongoose.model('Log', logSchema);
 
 ================================================
-DOSYA: Back-End/models/Otp.js
+DOSYA: Back-End\models\Otp.js
 ================================================
 const mongoose = require('mongoose');
 
@@ -319,7 +502,21 @@ const otpSchema = new mongoose.Schema({
 module.exports = mongoose.model('Otp', otpSchema);
 
 ================================================
-DOSYA: Back-End/models/User.js
+DOSYA: Back-End\models\Setting.js
+================================================
+const mongoose = require('mongoose');
+
+const settingSchema = new mongoose.Schema({
+    otpExpirationTimer: { type: Number, default: 3 }, // Dakika
+    faceRecognitionThreshold: { type: Number, default: 90 }, // Yüzde
+    alertEmail: { type: String, default: 'security@sirket.com' },
+    isLockdown: { type: Boolean, default: false } // Acil durum kilidi
+});
+
+module.exports = mongoose.model('Setting', settingSchema);
+
+================================================
+DOSYA: Back-End\models\User.js
 ================================================
 const mongoose = require('mongoose');
 
@@ -361,7 +558,7 @@ const userSchema = new mongoose.Schema({
 module.exports = mongoose.model('User', userSchema);
 
 ================================================
-DOSYA: Back-End/package-lock.json
+DOSYA: Back-End\package-lock.json
 ================================================
 {
   "name": "back-end",
@@ -380,7 +577,8 @@ DOSYA: Back-End/package-lock.json
         "express": "^5.3.0",
         "jsonwebtoken": "^9.0.3",
         "mongoose": "^9.11.4",
-        "nodemailer": "^10.2.1"
+        "nodemailer": "^10.2.1",
+        "socket.io": "^4.8.4"
       }
     },
     "node_modules/@mongodb-js/saslprep": {
@@ -392,11 +590,35 @@ DOSYA: Back-End/package-lock.json
         "sparse-bitfield": "^3.0.3"
       }
     },
+    "node_modules/@socket.io/component-emitter": {
+      "version": "3.1.2",
+      "resolved": "https://registry.npmjs.org/@socket.io/component-emitter/-/component-emitter-3.1.2.tgz",
+      "integrity": "sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==",
+      "license": "MIT"
+    },
     "node_modules/@standard-schema/spec": {
       "version": "1.1.0",
       "resolved": "https://registry.npmjs.org/@standard-schema/spec/-/spec-1.1.0.tgz",
       "integrity": "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==",
       "license": "MIT"
+    },
+    "node_modules/@types/cors": {
+      "version": "2.8.19",
+      "resolved": "https://registry.npmjs.org/@types/cors/-/cors-2.8.19.tgz",
+      "integrity": "sha512-mFNylyeyqN93lfe/9CSxOGREz8cpzAhH+E93xJ4xWQf62V8sQ/24reV2nyzUWM6H6Xji+GGHpkbLe7pVoUEskg==",
+      "license": "MIT",
+      "dependencies": {
+        "@types/node": "*"
+      }
+    },
+    "node_modules/@types/node": {
+      "version": "26.6.6",
+      "resolved": "https://registry.npmjs.org/@types/node/-/node-26.6.6.tgz",
+      "integrity": "sha512-MzQj+8Kx3XI40OmUAE6Qoh58ZMNstNNMwn2nfd3qWsfe7nDNSqJNzes4njhz6AHwrSHOffSLwXU6yb474Q4aog==",
+      "license": "MIT",
+      "dependencies": {
+        "undici-types": "~8.9.0"
+      }
     },
     "node_modules/@types/webidl-conversions": {
       "version": "7.0.3",
@@ -411,6 +633,15 @@ DOSYA: Back-End/package-lock.json
       "license": "MIT",
       "dependencies": {
         "@types/webidl-conversions": "*"
+      }
+    },
+    "node_modules/@types/ws": {
+      "version": "8.18.2",
+      "resolved": "https://registry.npmjs.org/@types/ws/-/ws-8.18.2.tgz",
+      "integrity": "sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==",
+      "license": "MIT",
+      "dependencies": {
+        "@types/node": "*"
       }
     },
     "node_modules/accepts": {
@@ -650,6 +881,78 @@ DOSYA: Back-End/package-lock.json
       "license": "MIT",
       "engines": {
         "node": ">= 0.8"
+      }
+    },
+    "node_modules/engine.io": {
+      "version": "6.6.11",
+      "resolved": "https://registry.npmjs.org/engine.io/-/engine.io-6.6.11.tgz",
+      "integrity": "sha512-z34mGpLoY/82ZbkX1LqGMIaf3wjVMPL6gVC681QDqnmzJ26synI8qAE32P+a7UazmpJZ8UGrFIeAavgRfXzYrg==",
+      "license": "MIT",
+      "dependencies": {
+        "@types/cors": "^2.8.12",
+        "@types/node": ">=10.0.0",
+        "@types/ws": "^8.5.12",
+        "accepts": "~1.3.4",
+        "cookie": "~0.7.2",
+        "cors": "~2.8.5",
+        "debug": "~4.4.1",
+        "engine.io-parser": "~5.2.1",
+        "ws": "~8.21.0"
+      },
+      "engines": {
+        "node": ">=10.2.0"
+      }
+    },
+    "node_modules/engine.io-parser": {
+      "version": "5.2.3",
+      "resolved": "https://registry.npmjs.org/engine.io-parser/-/engine.io-parser-5.2.3.tgz",
+      "integrity": "sha512-HqD3yTBfnBxIrbnM1DoD6Pcq8NECnh8d4As1Qgh0z5Gg3jRRIqijury0CL3ghu/edArpUYiYqQiDUQBIs4np3Q==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=10.0.0"
+      }
+    },
+    "node_modules/engine.io/node_modules/accepts": {
+      "version": "1.3.8",
+      "resolved": "https://registry.npmjs.org/accepts/-/accepts-1.3.8.tgz",
+      "integrity": "sha512-PYAthTa2m2VKxuvSD3DPC/Gy+U+sOA1LAuT8mkmRuvw+NACSaeXEQ+NHcVF7rONl6qcaxV3Uuemwawk+7+SJLw==",
+      "license": "MIT",
+      "dependencies": {
+        "mime-types": "~2.1.34",
+        "negotiator": "0.6.3"
+      },
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/engine.io/node_modules/mime-db": {
+      "version": "1.52.0",
+      "resolved": "https://registry.npmjs.org/mime-db/-/mime-db-1.52.0.tgz",
+      "integrity": "sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/engine.io/node_modules/mime-types": {
+      "version": "2.1.35",
+      "resolved": "https://registry.npmjs.org/mime-types/-/mime-types-2.1.35.tgz",
+      "integrity": "sha512-ZDY+bPm5zTTF+YpCrAU9nK0UgICYPT0QtT1NZWFv4s++TNkcgVaT0g6+4R2uI4MjQjzysHB1zxuWL50hzaeXiw==",
+      "license": "MIT",
+      "dependencies": {
+        "mime-db": "1.52.0"
+      },
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/engine.io/node_modules/negotiator": {
+      "version": "0.6.3",
+      "resolved": "https://registry.npmjs.org/negotiator/-/negotiator-0.6.3.tgz",
+      "integrity": "sha512-+EUsqGPLsM+j/zdChZjsnX51g4XrHFOIXwfnCVPGlQk/k5giakcKsuxCObBRu6DSm9opw/O6slWbJdghQM4bBg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
       }
     },
     "node_modules/es-define-property": {
@@ -1525,6 +1828,89 @@ DOSYA: Back-End/package-lock.json
       "integrity": "sha512-Rtlj66/b0ICeFzYTuNvX/EF1igRbbnGSvEyT79McoZa/DeGhMyC5pWKOEsZKnpkqtSeovd5FL/bjHWC3CIIvCQ==",
       "license": "MIT"
     },
+    "node_modules/socket.io": {
+      "version": "4.8.4",
+      "resolved": "https://registry.npmjs.org/socket.io/-/socket.io-4.8.4.tgz",
+      "integrity": "sha512-9ZV9zg8vN8hO3Y25DhR7nUkJ1VDnBhq5O/JrXhFT9s6+F0gqytSASTHVfCFc2mJXaTfARroErplXlzFWwETZqQ==",
+      "license": "MIT",
+      "dependencies": {
+        "accepts": "~1.3.4",
+        "cors": "~2.8.5",
+        "debug": "~4.4.1",
+        "engine.io": "~6.6.0",
+        "socket.io-adapter": "~2.5.2",
+        "socket.io-parser": "~4.2.4"
+      },
+      "engines": {
+        "node": ">=10.2.0"
+      }
+    },
+    "node_modules/socket.io-adapter": {
+      "version": "2.5.8",
+      "resolved": "https://registry.npmjs.org/socket.io-adapter/-/socket.io-adapter-2.5.8.tgz",
+      "integrity": "sha512-6Oy52pbg+kvdCVvjcN+FnY7BvxZ7cIHNScbvztT/It5d0vbwoJoVZmF2gjJmnV0/4WlXRfG15zc45ySk9Ah8bw==",
+      "license": "MIT",
+      "dependencies": {
+        "debug": "~4.4.1",
+        "ws": "~8.21.0"
+      }
+    },
+    "node_modules/socket.io-parser": {
+      "version": "4.2.7",
+      "resolved": "https://registry.npmjs.org/socket.io-parser/-/socket.io-parser-4.2.7.tgz",
+      "integrity": "sha512-IH/iSeO9T6gz1KkFleGDWkG9N3dl4jXVYUtMhIqH10Md0ttMer8nUNWiP1DKuNrybD2xBrixLJdCC9J6ECoYkg==",
+      "license": "MIT",
+      "dependencies": {
+        "@socket.io/component-emitter": "~3.1.0",
+        "debug": "~4.4.1"
+      },
+      "engines": {
+        "node": ">=10.0.0"
+      }
+    },
+    "node_modules/socket.io/node_modules/accepts": {
+      "version": "1.3.8",
+      "resolved": "https://registry.npmjs.org/accepts/-/accepts-1.3.8.tgz",
+      "integrity": "sha512-PYAthTa2m2VKxuvSD3DPC/Gy+U+sOA1LAuT8mkmRuvw+NACSaeXEQ+NHcVF7rONl6qcaxV3Uuemwawk+7+SJLw==",
+      "license": "MIT",
+      "dependencies": {
+        "mime-types": "~2.1.34",
+        "negotiator": "0.6.3"
+      },
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/socket.io/node_modules/mime-db": {
+      "version": "1.52.0",
+      "resolved": "https://registry.npmjs.org/mime-db/-/mime-db-1.52.0.tgz",
+      "integrity": "sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/socket.io/node_modules/mime-types": {
+      "version": "2.1.35",
+      "resolved": "https://registry.npmjs.org/mime-types/-/mime-types-2.1.35.tgz",
+      "integrity": "sha512-ZDY+bPm5zTTF+YpCrAU9nK0UgICYPT0QtT1NZWFv4s++TNkcgVaT0g6+4R2uI4MjQjzysHB1zxuWL50hzaeXiw==",
+      "license": "MIT",
+      "dependencies": {
+        "mime-db": "1.52.0"
+      },
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/socket.io/node_modules/negotiator": {
+      "version": "0.6.3",
+      "resolved": "https://registry.npmjs.org/negotiator/-/negotiator-0.6.3.tgz",
+      "integrity": "sha512-+EUsqGPLsM+j/zdChZjsnX51g4XrHFOIXwfnCVPGlQk/k5giakcKsuxCObBRu6DSm9opw/O6slWbJdghQM4bBg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
     "node_modules/sparse-bitfield": {
       "version": "3.0.3",
       "resolved": "https://registry.npmjs.org/sparse-bitfield/-/sparse-bitfield-3.0.3.tgz",
@@ -1582,6 +1968,12 @@ DOSYA: Back-End/package-lock.json
         "url": "https://opencollective.com/express"
       }
     },
+    "node_modules/undici-types": {
+      "version": "8.9.0",
+      "resolved": "https://registry.npmjs.org/undici-types/-/undici-types-8.9.0.tgz",
+      "integrity": "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==",
+      "license": "MIT"
+    },
     "node_modules/unpipe": {
       "version": "1.0.0",
       "resolved": "https://registry.npmjs.org/unpipe/-/unpipe-1.0.0.tgz",
@@ -1627,13 +2019,34 @@ DOSYA: Back-End/package-lock.json
       "resolved": "https://registry.npmjs.org/wrappy/-/wrappy-1.0.2.tgz",
       "integrity": "sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==",
       "license": "ISC"
+    },
+    "node_modules/ws": {
+      "version": "8.21.3",
+      "resolved": "https://registry.npmjs.org/ws/-/ws-8.21.3.tgz",
+      "integrity": "sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=10.0.0"
+      },
+      "peerDependencies": {
+        "bufferutil": "^4.0.1",
+        "utf-8-validate": ">=5.0.2"
+      },
+      "peerDependenciesMeta": {
+        "bufferutil": {
+          "optional": true
+        },
+        "utf-8-validate": {
+          "optional": true
+        }
+      }
     }
   }
 }
 
 
 ================================================
-DOSYA: Back-End/package.json
+DOSYA: Back-End\package.json
 ================================================
 {
   "name": "back-end",
@@ -1654,13 +2067,14 @@ DOSYA: Back-End/package.json
     "express": "^5.3.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.11.4",
-    "nodemailer": "^10.2.1"
+    "nodemailer": "^10.2.1",
+    "socket.io": "^4.8.4"
   }
 }
 
 
 ================================================
-DOSYA: Back-End/routes/authRoutes.js
+DOSYA: Back-End\routes\authRoutes.js
 ================================================
 const express = require('express');
 const router = express.Router();
@@ -1672,7 +2086,7 @@ router.post('/admin-login', authController.adminLogin);
 module.exports = router;
 
 ================================================
-DOSYA: Back-End/routes/logRoutes.js
+DOSYA: Back-End\routes\logRoutes.js
 ================================================
 const express = require('express');
 const router = express.Router();
@@ -1685,7 +2099,7 @@ router.get('/', authMiddleware, logController.getLogs);
 module.exports = router;
 
 ================================================
-DOSYA: Back-End/routes/otpRoutes.js
+DOSYA: Back-End\routes\otpRoutes.js
 ================================================
 const express = require('express');
 const router = express.Router();
@@ -1700,7 +2114,48 @@ router.post('/verify', otpController.verifyOtp);
 module.exports = router;
 
 ================================================
-DOSYA: Back-End/seedAdmin.js
+DOSYA: Back-End\routes\settingRoutes.js
+================================================
+const express = require('express');
+const router = express.Router();
+const settingController = require('../controllers/settingController');
+const authMiddleware = require('../middleware/authMiddleware');
+
+router.get('/', authMiddleware, settingController.getSettings);
+router.put('/', authMiddleware, settingController.updateSettings);
+
+module.exports = router;
+
+================================================
+DOSYA: Back-End\routes\userRoutes.js
+================================================
+const express = require('express');
+const router = express.Router();
+const userController = require('../controllers/userController');
+const authMiddleware = require('../middleware/authMiddleware');
+const { 
+    getUsers, 
+    createUser, 
+    toggleUserStatus, 
+    deleteUser, 
+    updateUserFace // <-- Yeni eklediğimiz fonksiyonu buraya dahil et
+} = require('../controllers/userController');
+
+// ... diğer rotaların altına bunu ekle:
+router.put('/:id/face', authMiddleware, updateUserFace);
+
+// Bu rotaların tamamı güvenli bölgede olacak (Sadece token ile girilebilir)
+router.use(authMiddleware);
+
+router.get('/', userController.getAllUsers);
+router.post('/', userController.createUser);
+router.put('/:id/toggle-status', userController.toggleUserStatus);
+router.delete('/:id', userController.deleteUser);
+
+module.exports = router;
+
+================================================
+DOSYA: Back-End\seedAdmin.js
 ================================================
 const dns = require('dns');
 dns.setServers(['8.8.8.8', '8.8.4.4']);
@@ -1751,52 +2206,81 @@ const seedAdmin = async () => {
 seedAdmin();
 
 ================================================
-DOSYA: Back-End/server.js
+DOSYA: Back-End\server.js
 ================================================
-const dns = require('dns');
-dns.setServers(['8.8.8.8', '8.8.4.4']);
-
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 require('dotenv').config();
 
-// Rota Tanımları
-const authRoutes = require('./routes/authRoutes');
-const logRoutes = require('./routes/logRoutes');
-const otpRoutes = require('./routes/otpRoutes');
+// Socket.io ve HTTP sunucusu için gerekli modüller
+const http = require('http');
+const { Server } = require('socket.io');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
+
+// Express sunucusunu HTTP sunucusuyla sarmalıyoruz
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "*", // Tüm kaynaklardan gelen bağlantılara izin ver
+        methods: ["GET", "POST", "PUT", "DELETE"]
+    }
+});
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
+// Veritabanı Bağlantısı (MongoDB Atlas)
+mongoose.connect(process.env.MONGO_URI)
+    .then(() => console.log('MongoDB bağlantısı başarılı!'))
+    .catch((err) => console.error('MongoDB bağlantı hatası:', err));
+
+// Rota Tanımları
+const authRoutes = require('./routes/authRoutes');
+const logRoutes = require('./routes/logRoutes');
+const otpRoutes = require('./routes/otpRoutes');
+const settingRoutes = require('./routes/settingRoutes');
+const userRoutes = require('./routes/userRoutes');
+
 // API Rotaları
 app.use('/api/auth', authRoutes);
 app.use('/api/logs', logRoutes);
 app.use('/api/otp', otpRoutes);
+app.use('/api/settings', settingRoutes);
+app.use('/api/users', userRoutes);
 
 // Test Endpoint
 app.get('/', (req, res) => {
-    res.json({ message: "BioGate API Sunucusu Aktif!" });
+    res.send('BioGate API Sunucusu Çalışıyor...');
 });
 
-// Veritabanı Bağlantısı ve Sunucu Başlatma
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => {
-        console.log('✓ MongoDB Atlas Bağlantısı Başarılı!');
-        app.listen(PORT, () => {
-            console.log(`✓ BioGate API Sunucusu http://localhost:${PORT} üzerinde çalışıyor.`);
-        });
-    })
-    .catch((err) => {
-        console.error('✗ MongoDB Bağlantı Hatası:', err.message);
+// Socket.io Bağlantı Dinleyicisi
+io.on('connection', (socket) => {
+    console.log('⚡ Yeni bir cihaz bağlandı:', socket.id);
+
+    // 1. Python tarafı bir yüz tanıdığında burası çalışacak
+    socket.on('python_face_detected', (data) => {
+        console.log('📷 Python\'dan yüz tanıma sinyali geldi:', data);
+        
+        // Gelen veriyi (örneğin kimin geldiğini) sisteme bağlı tüm arayüzlere (kiosk / anaSayfa) yayınla (broadcast)
+        io.emit('face_recognized_alert', data);
     });
 
+    socket.on('disconnect', () => {
+        console.log('❌ Cihaz ayrıldı:', socket.id);
+    });
+});
+
+// Sunucuyu app.listen yerine server.listen ile başlatıyoruz
+server.listen(PORT, () => {
+    console.log(`Sunucu ${PORT} portunda çalışıyor...`);
+});
+
 ================================================
-DOSYA: Back-End/testMail.js
+DOSYA: Back-End\testMail.js
 ================================================
 const dns = require('dns');
 dns.setServers(['8.8.8.8', '8.8.4.4']);
@@ -1809,7 +2293,7 @@ async function runTest() {
         await mongoose.connect(process.env.MONGO_URI);
         
         // DİKKAT: Aşağıdaki adresi, telefonunda bildirimini görebileceğin GERÇEK bir e-posta ile değiştir!
-        const gercekMail = "ilkimyigitalp00@gmail.com"; 
+        const gercekMail = "keremvarli1@gmail.com"; 
         
         // 1. Veritabanındaki admin kullanıcısının mailini gerçek mailinle güncelliyoruz
         await User.findOneAndUpdate({ role: 'admin' }, { email: gercekMail.toLowerCase() });
@@ -1842,7 +2326,7 @@ async function runTest() {
 runTest();
 
 ================================================
-DOSYA: Front-End/adminAnaSayfa.html
+DOSYA: Front-End\adminAnaSayfa.html
 ================================================
 <!DOCTYPE html>
 <html lang="tr">
@@ -1890,15 +2374,18 @@ DOSYA: Front-End/adminAnaSayfa.html
             <div class="stats-grid">
                 <div class="stat-card">
                     <h3>Bugün Başarılı Giriş</h3>
-                    <div class="stat-value text-success">42</div>
+                    <!-- id="stat-success" eklendi -->
+                    <div class="stat-value text-success" id="stat-success">0</div>
                 </div>
                 <div class="stat-card">
                     <h3>Hatalı OTP Denemesi</h3>
-                    <div class="stat-value text-warning">3</div>
+                    <!-- id="stat-warning" eklendi -->
+                    <div class="stat-value text-warning" id="stat-warning">0</div>
                 </div>
                 <div class="stat-card alert-card">
                     <h3>Sahte Yüz (Spoofing)</h3>
-                    <div class="stat-value text-danger">1</div>
+                    <!-- id="stat-danger" eklendi -->
+                    <div class="stat-value text-danger" id="stat-danger">0</div>
                     <p class="stat-desc">Kritik İhlal!</p>
                 </div>
             </div>
@@ -1955,7 +2442,7 @@ DOSYA: Front-End/adminAnaSayfa.html
 </html>
 
 ================================================
-DOSYA: Front-End/adminGiris.html
+DOSYA: Front-End\adminGiris.html
 ================================================
 <!DOCTYPE html>
 <html lang="tr">
@@ -2021,7 +2508,7 @@ DOSYA: Front-End/adminGiris.html
 </html>
 
 ================================================
-DOSYA: Front-End/anaSayfa.html
+DOSYA: Front-End\anaSayfa.html
 ================================================
 <!DOCTYPE html>
 <html lang="tr">
@@ -2068,7 +2555,7 @@ DOSYA: Front-End/anaSayfa.html
                 <div class="status-message" id="status-message"></div>
 
                 <div class="footer-links">
-                    <p>Sorun mu yaşıyorsunuz? <a target="_blank" href="https://www.instagram.com/ilkimyigitalpp/">IT Destek ile İletişime Geçin</a></p>
+                    <p>Sorun mu yaşıyorsunuz? <a target="_blank" href="https://www.instagram.com/keremmvarli/">IT Destek ile İletişime Geçin</a></p>
                 </div>
             </div>
         </div>
@@ -2097,13 +2584,24 @@ DOSYA: Front-End/anaSayfa.html
 
     <!-- JS dosyalarımız aynı kalıyor -->
     <script type="module" src="js/app.js"></script>
+    <!-- Socket.io İstemci Kütüphanesi -->
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+<!-- Sunucuya Bağlanma Testi -->
+<script>
+    const socket = io('http://localhost:5001');
+    
+    socket.on('connect', () => {
+        console.log("WebSocket bağlantısı başarılı! Sunucuya bağlandık.");
+    });
+</script>
 
 </body>
 
 </html>
 
 ================================================
-DOSYA: Front-End/css/admin.css
+DOSYA: Front-End\css\admin.css
 ================================================
 * {
     box-sizing: border-box;
@@ -2584,7 +3082,7 @@ body.login-body {
 }
 
 ================================================
-DOSYA: Front-End/css/anaSayfa.css
+DOSYA: Front-End\css\anaSayfa.css
 ================================================
 /* Temel Ayarlar */
 * {
@@ -2816,7 +3314,7 @@ h1 {
 }
 
 ================================================
-DOSYA: Front-End/guvenlikAyarlari.html
+DOSYA: Front-End\guvenlikAyarlari.html
 ================================================
 <!DOCTYPE html>
 <html lang="tr">
@@ -2860,41 +3358,44 @@ DOSYA: Front-End/guvenlikAyarlari.html
                 <!-- Sistem Konfigürasyonu -->
                 <div class="admin-card">
                     <h3 class="card-title">Sistem Konfigürasyonu</h3>
-                    <form class="admin-form vertical-form">
+                    <form id="settings-form" class="admin-form vertical-form">
                         <div class="form-group">
                             <label>OTP Geçerlilik Süresi (Dakika)</label>
-                            <input type="number" value="3" min="1" max="10">
+                            <input type="number" id="otp-timer" min="1" max="10">
                             <span class="help-text">Şifrenin girilmesi için tanınan maksimum süre.</span>
                         </div>
                         <div class="form-group">
                             <label>Yüz Tanıma Hassasiyet Eşiği (%)</label>
-                            <input type="number" value="90" min="50" max="99">
+                            <input type="number" id="face-threshold" min="50" max="99">
                             <span class="help-text">Önerilen minimum değer: 85 (DeepFace VGG-Face)</span>
                         </div>
                         <div class="form-group">
                             <label>İzinsiz Giriş Bildirim E-Postası</label>
-                            <input type="email" value="security@sirket.com">
+                            <input type="email" id="alert-email">
                         </div>
-                        <button type="submit" class="btn-primary mt-16">Ayarları Kaydet</button>
+                        <button type="submit" class="btn-primary mt-16" id="save-btn">Ayarları Kaydet</button>
+                        <div id="save-message" style="margin-top:10px; font-weight:bold; font-size:14px;"></div>
                     </form>
                 </div>
 
                 <!-- Acil Durum Protokolü -->
                 <div class="admin-card alert-bg">
                     <h3 class="card-title text-danger">Acil Durum Protokolü (Lockdown)</h3>
-                    <p class="lockdown-desc">Tesis içerisinde yangın, saldırı veya sızıntı durumunda tüm geçişleri
-                        geçici olarak durdurur. Yüzü tanınan yetkili personellerin dahi kapıyı açması engellenir.</p>
-                    <button class="btn-danger">Sistemi Kilitle (Lockdown Başlat)</button>
+                    <p class="lockdown-desc">Tesis içerisinde yangın, saldırı veya sızıntı durumunda tüm geçişleri geçici olarak durdurur. Yüzü tanınan yetkili personellerin dahi kapıyı açması engellenir.</p>
+                    <button class="btn-danger" id="lockdown-btn">Sistemi Kilitle (Lockdown Başlat)</button>
                 </div>
             </div>
         </main>
     </div>
+
+    <!-- Ayarları veritabanından çekip kaydeden script -->
+    <script src="js/settings.js"></script>
 </body>
 
 </html>
 
 ================================================
-DOSYA: Front-End/js/adminAuth.js
+DOSYA: Front-End\js\adminAuth.js
 ================================================
 document.addEventListener('DOMContentLoaded', () => {
     const loginForm = document.getElementById('admin-login-form');
@@ -2964,7 +3465,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 ================================================
-DOSYA: Front-End/js/adminGuard.js
+DOSYA: Front-End\js\adminGuard.js
 ================================================
 // 1. AŞAMA: Sayfa yüklenmeden (UI görünmeden) hemen token kontrolü yap (Flicker engelleme)
 const token = localStorage.getItem('adminToken');
@@ -2993,7 +3494,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 ================================================
-DOSYA: Front-End/js/adminPanel.js
+DOSYA: Front-End\js\adminPanel.js
 ================================================
 document.addEventListener('DOMContentLoaded', () => {
     // Sayfa açıldığında logları çek
@@ -3012,11 +3513,9 @@ async function fetchLogs() {
 
     if (!token) return;
 
-    // Yükleniyor mesajı
     tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Loglar yükleniyor...</td></tr>';
 
     try {
-        // Port 5001 üzerinden, JWT Token ile güvenli istek atıyoruz
         const response = await fetch('http://localhost:5001/api/logs', {
             method: 'GET',
             headers: {
@@ -3029,6 +3528,7 @@ async function fetchLogs() {
 
         if (data.success) {
             renderLogs(data.data);
+            updateStats(data.data); // İstatistikleri güncelle
         } else {
             tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #ef4444;">${data.message}</td></tr>`;
         }
@@ -3040,26 +3540,22 @@ async function fetchLogs() {
 
 function renderLogs(logs) {
     const tableBody = document.getElementById('log-table-body');
-    tableBody.innerHTML = ''; // Eski statik verileri tamamen temizle
+    tableBody.innerHTML = ''; 
 
     if (logs.length === 0) {
         tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #9ca3af;">Henüz sistemde hiç kayıtlı log bulunmuyor.</td></tr>';
         return;
     }
 
-    // Gelen her bir log için tabloya yeni bir satır ekle
     logs.forEach(log => {
-        // Duruma göre rozet rengini belirle
         let badgeClass = 'badge-success';
         if (log.status === 'warning') badgeClass = 'badge-warning';
         if (log.status === 'danger') badgeClass = 'badge-danger';
 
-        // Tarih ve saati Türkçe formatta ayarla
         const dateObj = new Date(log.createdAt);
         const dateStr = dateObj.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
         const timeStr = dateObj.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
-        // Kanıt görüntüsü varsa link koy, yoksa '-' koy
         const evidenceHtml = log.evidenceImage 
             ? `<a href="${log.evidenceImage}" class="view-image-link" target="_blank">Görüntüyü İncele</a>` 
             : '-';
@@ -3077,30 +3573,61 @@ function renderLogs(logs) {
     });
 }
 
+// YENİ EKLENEN FONKSİYON: İstatistik kartlarını günceller
+function updateStats(logs) {
+    let successCount = 0;
+    let warningCount = 0;
+    let dangerCount = 0;
+
+    // Sadece bugünün tarihini alıyoruz
+    const today = new Date().setHours(0, 0, 0, 0);
+
+    logs.forEach(log => {
+        const logDate = new Date(log.createdAt).setHours(0, 0, 0, 0);
+        
+        // Sadece bugünün loglarını say
+        if (logDate === today) {
+            if (log.status === 'success') successCount++;
+            if (log.status === 'warning') warningCount++;
+            if (log.status === 'danger') dangerCount++;
+        }
+    });
+
+    // Sayıları HTML'e bas
+    document.getElementById('stat-success').textContent = successCount;
+    document.getElementById('stat-warning').textContent = warningCount;
+    document.getElementById('stat-danger').textContent = dangerCount;
+}
+
 ================================================
-DOSYA: Front-End/js/apiService.js
+DOSYA: Front-End\js\apiService.js
 ================================================
 export class ApiService {
-    constructor(baseUrl = '') {
+    constructor(baseUrl = 'http://localhost:5001') {
         this.baseUrl = baseUrl;
     }
 
-    async verifyOTP(otpCode) {
-        // İleride gerçek backend isteği buraya gelecek:
-        // const response = await fetch(`${this.baseUrl}/api/verify`, { ... });
-        
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                // Şimdilik simülasyon (Backend gelene kadar)
-                const isSuccess = (otpCode === "123456"); 
-                resolve({ success: isSuccess });
-            }, 1000);
-        });
+    async verifyOTP(email, otpCode) {
+        try {
+            const response = await fetch(`${this.baseUrl}/api/otp/verify`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email, otpCode })
+            });
+            
+            // Backend'den dönen { success: true/false, message: "..." } formatındaki JSON
+            return await response.json(); 
+        } catch (error) {
+            console.error("API Bağlantı Hatası:", error);
+            throw error;
+        }
     }
 }
 
 ================================================
-DOSYA: Front-End/js/app.js
+DOSYA: Front-End\js\app.js
 ================================================
 import { ApiService } from './apiService.js';
 import { UIManager } from './uiManager.js';
@@ -3113,6 +3640,9 @@ class App {
         // Gizli admin girişi için sayaç değişkenleri
         this.secretClickCount = 0;
         this.secretClickTimer = null;
+
+        // GEÇİCİ: Yüz tanıma sistemi gelene kadar test mailimizi "tanınan kişi" olarak sabitliyoruz
+        this.currentRecognizedEmail = "keremvarli1@gmail.com"; 
 
         this.bindEvents();
         this.setupSecretAdminLogin();
@@ -3138,10 +3668,10 @@ class App {
                     window.location.href = 'adminGiris.html';
                 }
 
-                // Eğer 1.5 saniye içinde yeni bir tıklama gelmezse sayacı sıfırla
+                // Eğer 1 saniye içinde yeni bir tıklama gelmezse sayacı sıfırla
                 this.secretClickTimer = setTimeout(() => {
                     this.secretClickCount = 0;
-                }, 1500);
+                }, 1000);
             });
         }
     }
@@ -3157,12 +3687,15 @@ class App {
         this.ui.showLoading();
 
         try {
-            const response = await this.api.verifyOTP(otpValue);
+            // Sadece OTP kodunu değil, "kimin" kodu olduğunu da (email) gönderiyoruz
+            const response = await this.api.verifyOTP(this.currentRecognizedEmail, otpValue);
             
             if (response.success) {
-                this.ui.showSuccess("✓ Giriş Başarılı! Kapı Açılıyor...");
+                // Backend'den gelen başarılı mesajını ekrana bas (örn: "Doğrulama başarılı, kapı açılıyor.")
+                this.ui.showSuccess("✓ " + response.message);
             } else {
-                this.ui.showError("✗ Hatalı Şifre. Lütfen tekrar deneyin.");
+                // Backend'den gelen hata mesajını ekrana bas (örn: "Hatalı veya süresi dolmuş kod!")
+                this.ui.showError("✗ " + response.message);
             }
         } catch (error) {
             this.ui.showError("Sunucu bağlantı hatası oluştu.");
@@ -3175,7 +3708,305 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 ================================================
-DOSYA: Front-End/js/uiManager.js
+DOSYA: Front-End\js\kullaniciYonetimi.js
+================================================
+document.addEventListener('DOMContentLoaded', () => {
+    // Sayfa açıldığında kullanıcıları tablodan çek
+    kullanicilariGetir();
+
+    // ID eklediğimiz formu yakala
+    const addUserForm = document.getElementById('addUserForm');
+    if (addUserForm) {
+        addUserForm.addEventListener('submit', yeniKullaniciEkle);
+    }
+});
+
+// --- 1. KULLANICILARI LİSTELEME (GET) ---
+async function kullanicilariGetir() {
+    const tbody = document.querySelector('tbody');
+    const token = localStorage.getItem('adminToken'); // adminAuth'taki doğru anahtar adı
+
+    if (!token) return;
+
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Kullanıcılar yükleniyor...</td></tr>';
+
+    try {
+        const response = await fetch('http://localhost:5001/api/users', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            tabloyuDoldur(data.data);
+        } else {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #ef4444;">${data.message}</td></tr>`;
+        }
+    } catch (error) {
+        console.error("Bağlantı hatası:", error);
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #ef4444;">Sunucuya ulaşılamadı. Node.js açık mı?</td></tr>';
+    }
+}
+
+// Tabloyu tasarıma uygun şekilde ekrana çizme
+function tabloyuDoldur(kullanicilar) {
+    const tbody = document.querySelector('tbody');
+    tbody.innerHTML = '';
+
+    if (kullanicilar.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #9ca3af;">Henüz kayıtlı personel yok.</td></tr>';
+        return;
+    }
+
+    kullanicilar.forEach((user, index) => {
+        // Tasarıma uygun rozetler (Badge)
+        const roleText = user.role === 'admin' ? 'Sistem Yöneticisi' : 'Standart Geçiş';
+        const statusBadge = user.isActive 
+            ? '<span class="badge badge-success">Aktif</span>' 
+            : '<span class="badge badge-danger">Askıda</span>';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>#${String(index + 1).padStart(3, '0')}</td>
+            <td>${user.fullName}</td>
+            <td>${user.email}</td>
+            <td>${roleText}</td>
+            <td>${statusBadge}</td>
+            <td>
+                <button class="action-btn text-warning" onclick="durumDegistir('${user._id}')">${user.isActive ? 'Askıya Al' : 'Aktifleştir'}</button>
+                <button class="action-btn text-danger" onclick="kullaniciSil('${user._id}')">Sil</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+// --- 2. YENİ KULLANICI EKLEME (POST) ---
+async function yeniKullaniciEkle(e) {
+    e.preventDefault(); // Sayfa yenilenmesini engelle
+
+    const fullNameInput = document.getElementById('fullName');
+    const emailInput = document.getElementById('email');
+    const roleSelect = document.getElementById('role');
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+
+    const fullName = fullNameInput.value.trim();
+    const email = emailInput.value.trim();
+    // Seçilen değere göre Backend'in anladığı 'admin' veya 'standard' kelimesini belirliyoruz
+    const roleValue = roleSelect.value === 'Sistem Yöneticisi (Admin)' ? 'admin' : 'standard';
+
+    const token = localStorage.getItem('adminToken');
+    if (!token) return alert("Oturum bulunamadı!");
+
+    // Butonu tıklandığında "Kaydediliyor..." yapalım ki adam 2 kere basmasın
+    const originalBtnText = submitBtn.textContent;
+    submitBtn.textContent = 'Kaydediliyor...';
+    submitBtn.disabled = true;
+
+    try {
+        const response = await fetch('http://localhost:5001/api/users', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ fullName, email, role: roleValue })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Formu boşalt ve tabloyu yeniden çek (Böylece anında ekranda belirir)
+            e.target.reset();
+            kullanicilariGetir();
+        } else {
+            alert('Hata: ' + data.message); // Örn: Bu e-posta zaten kullanımda
+        }
+    } catch (error) {
+        console.error("Kayıt işlemi başarısız:", error);
+        alert("Sunucu ile iletişim kurulamadı.");
+    } finally {
+        // İşlem bitince butonu eski haline getir
+        submitBtn.textContent = originalBtnText;
+        submitBtn.disabled = false;
+    }
+}
+
+// --- 3. KULLANICIYI ASKIYA AL / AKTİFLEŞTİR (PUT) ---
+window.durumDegistir = async function(id) {
+    const token = localStorage.getItem('adminToken');
+    if (!token) return;
+
+    try {
+        const response = await fetch(`http://localhost:5001/api/users/${id}/toggle-status`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Başarılıysa tabloyu yenile ki rozet anında "Askıda" veya "Aktif" olarak değişsin
+            kullanicilariGetir();
+        } else {
+            alert("İşlem başarısız: " + data.message);
+        }
+    } catch (error) {
+        console.error("Durum değiştirme hatası:", error);
+        alert("Sunucuyla iletişim kurulamadı.");
+    }
+}
+
+// --- 4. KULLANICIYI SİL (DELETE) ---
+window.kullaniciSil = async function(id) {
+    // Silmeden önce yanlış tıklamalara karşı bir onay isteyelim
+    const onay = confirm("Bu yetkiliyi sistemden kalıcı olarak silmek istediğinize emin misiniz?");
+    if (!onay) return;
+
+    const token = localStorage.getItem('adminToken');
+    if (!token) return;
+
+    try {
+        const response = await fetch(`http://localhost:5001/api/users/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Başarılıysa tabloyu yenile ki kişi listeden kaybolsun
+            kullanicilariGetir();
+        } else {
+            alert("Silme işlemi başarısız: " + data.message);
+        }
+    } catch (error) {
+        console.error("Silme hatası:", error);
+        alert("Sunucuyla iletişim kurulamadı.");
+    }
+}
+
+================================================
+DOSYA: Front-End\js\settings.js
+================================================
+document.addEventListener('DOMContentLoaded', () => {
+    const token = localStorage.getItem('adminToken');
+    if (!token) return;
+
+    const otpTimerInput = document.getElementById('otp-timer');
+    const faceThresholdInput = document.getElementById('face-threshold');
+    const alertEmailInput = document.getElementById('alert-email');
+    const settingsForm = document.getElementById('settings-form');
+    const saveMessage = document.getElementById('save-message');
+    const lockdownBtn = document.getElementById('lockdown-btn');
+
+    let currentLockdownStatus = false;
+
+    // 1. Ayarları Veritabanından Çek
+    async function loadSettings() {
+        try {
+            const response = await fetch('http://localhost:5001/api/settings', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                otpTimerInput.value = data.data.otpExpirationTimer;
+                faceThresholdInput.value = data.data.faceRecognitionThreshold;
+                alertEmailInput.value = data.data.alertEmail;
+                currentLockdownStatus = data.data.isLockdown;
+                updateLockdownUI();
+            }
+        } catch (error) {
+            console.error("Ayarlar yüklenemedi:", error);
+        }
+    }
+
+    // 2. Ayarları Kaydet
+    settingsForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        saveMessage.textContent = "Kaydediliyor...";
+        saveMessage.style.color = "#9ca3af";
+
+        try {
+            const response = await fetch('http://localhost:5001/api/settings', {
+                method: 'PUT',
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    otpExpirationTimer: otpTimerInput.value,
+                    faceRecognitionThreshold: faceThresholdInput.value,
+                    alertEmail: alertEmailInput.value
+                })
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                saveMessage.textContent = "✓ Ayarlar başarıyla güncellendi.";
+                saveMessage.style.color = "#10b981";
+                setTimeout(() => saveMessage.textContent = "", 3000);
+            }
+        } catch (error) {
+            saveMessage.textContent = "✗ Kayıt başarısız!";
+            saveMessage.style.color = "#ef4444";
+        }
+    });
+
+    // 3. Lockdown (Acil Durum) Butonu İşlemi
+    lockdownBtn.addEventListener('click', async () => {
+        const newStatus = !currentLockdownStatus;
+        const confirmMsg = newStatus 
+            ? "TÜM GEÇİŞLER DURDURULACAK! Emin misiniz?" 
+            : "Sistem normale döndürülecek. Emin misiniz?";
+
+        if (!confirm(confirmMsg)) return;
+
+        try {
+            const response = await fetch('http://localhost:5001/api/settings', {
+                method: 'PUT',
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ isLockdown: newStatus })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                currentLockdownStatus = newStatus;
+                updateLockdownUI();
+            }
+        } catch (error) {
+            alert("İşlem başarısız oldu.");
+        }
+    });
+
+    // UI Güncelleyici
+    function updateLockdownUI() {
+        if (currentLockdownStatus) {
+            lockdownBtn.textContent = "KİLİDİ AÇ (Sistemi Normale Döndür)";
+            lockdownBtn.style.backgroundColor = "#10b981"; // Yeşil yap
+        } else {
+            lockdownBtn.textContent = "Sistemi Kilitle (Lockdown Başlat)";
+            lockdownBtn.style.backgroundColor = "#ef4444"; // Kırmızı yap
+        }
+    }
+
+    loadSettings();
+});
+
+================================================
+DOSYA: Front-End\js\uiManager.js
 ================================================
 export class UIManager {
     constructor() {
@@ -3240,7 +4071,7 @@ export class UIManager {
 }
 
 ================================================
-DOSYA: Front-End/kullaniciYonetimi.html
+DOSYA: Front-End\kullaniciYonetimi.html
 ================================================
 <!DOCTYPE html>
 <html lang="tr">
@@ -3283,19 +4114,19 @@ DOSYA: Front-End/kullaniciYonetimi.html
             <!-- Yeni Kullanıcı Ekleme Formu -->
             <div class="admin-card mb-24">
                 <h3 class="card-title">Yeni Yetkili Ekle</h3>
-                <form class="admin-form">
+                <form class="admin-form" id="addUserForm">
                     <div class="form-row">
                         <div class="form-group">
                             <label>Ad Soyad</label>
-                            <input type="text" placeholder="Örn: Bekir Yılmaz">
+                            <input type="text" id="fullName" placeholder="Örn: Bekir Yılmaz">
                         </div>
                         <div class="form-group">
                             <label>E-Posta Adresi (OTP Gönderimi İçin)</label>
-                            <input type="email" placeholder="ornek@sirket.com">
+                            <input type="email" id="email" placeholder="ornek@sirket.com">
                         </div>
                         <div class="form-group">
                             <label>Yetki Rolü</label>
-                            <select>
+                            <select id="role">
                                 <option>Standart Geçiş</option>
                                 <option>Sistem Yöneticisi (Admin)</option>
                             </select>
@@ -3352,6 +4183,7 @@ DOSYA: Front-End/kullaniciYonetimi.html
             </div>
         </main>
     </div>
+    <script src="js/kullaniciYonetimi.js"></script>
 </body>
 
 </html>

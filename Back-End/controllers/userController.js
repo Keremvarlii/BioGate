@@ -77,3 +77,29 @@ exports.deleteUser = async (req, res) => {
         res.status(500).json({ success: false, message: 'Kullanıcı silinemedi.' });
     }
 };
+
+// Kullanıcının yüz verisini (faceDescriptor) güncelleme
+exports.updateUserFace = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { faceDescriptor } = req.body; // Python'dan gelecek yüz vektör dizisi
+
+        const updatedUser = await User.findByIdAndUpdate(
+            id,
+            { faceDescriptor },
+            { new: true }
+        );
+
+        if (!updatedUser) {
+            return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı.' });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Yüz verisi başarıyla kaydedildi!',
+            data: updatedUser
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Sunucu hatası: ' + error.message });
+    }
+};

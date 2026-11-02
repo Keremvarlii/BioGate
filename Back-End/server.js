@@ -51,6 +51,14 @@ app.get('/', (req, res) => {
 io.on('connection', (socket) => {
     console.log('⚡ Yeni bir cihaz bağlandı:', socket.id);
 
+    // 1. Python tarafı bir yüz tanıdığında burası çalışacak
+    socket.on('python_face_detected', (data) => {
+        console.log('📷 Python\'dan yüz tanıma sinyali geldi:', data);
+        
+        // Gelen veriyi (örneğin kimin geldiğini) sisteme bağlı tüm arayüzlere (kiosk / anaSayfa) yayınla (broadcast)
+        io.emit('face_recognized_alert', data);
+    });
+
     socket.on('disconnect', () => {
         console.log('❌ Cihaz ayrıldı:', socket.id);
     });
