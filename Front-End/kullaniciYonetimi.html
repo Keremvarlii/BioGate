@@ -39,19 +39,19 @@
             <!-- Yeni Kullanıcı Ekleme Formu -->
             <div class="admin-card mb-24">
                 <h3 class="card-title">Yeni Yetkili Ekle</h3>
-                <form class="admin-form">
+                <form class="admin-form" id="addUserForm">
                     <div class="form-row">
                         <div class="form-group">
                             <label>Ad Soyad</label>
-                            <input type="text" placeholder="Örn: Bekir Yılmaz">
+                            <input type="text" id="fullName" placeholder="Örn: Bekir Yılmaz">
                         </div>
                         <div class="form-group">
                             <label>E-Posta Adresi (OTP Gönderimi İçin)</label>
-                            <input type="email" placeholder="ornek@sirket.com">
+                            <input type="email" id="email" placeholder="ornek@sirket.com">
                         </div>
                         <div class="form-group">
                             <label>Yetki Rolü</label>
-                            <select>
+                            <select id="role">
                                 <option>Standart Geçiş</option>
                                 <option>Sistem Yöneticisi (Admin)</option>
                             </select>
@@ -108,6 +108,7 @@
             </div>
         </main>
     </div>
+    <script src="js/kullaniciYonetimi.js"></script>
 </body>
 
 </html>
