@@ -1,0 +1,3358 @@
+--- PROJE DOSYALARI ---
+
+================================================
+DOSYA: .gitignore
+================================================
+# Bağımlılıklar (Node.js kütüphaneleri)
+node_modules/
+Back-End/node_modules/
+
+
+# Gizli anahtarlar ve şifreler
+.env
+Back-End/.env
+
+#Kişisel Scriptler
+ozet.js
+ozet.txt
+
+# İşletim sistemi kalıntıları
+.DS_Store
+
+================================================
+DOSYA: Back-End/.env
+================================================
+PORT=5001
+MONGO_URI=mongodb+srv://keremvarli1_db_user:M3DPOubBBgSPsRBE@biogate-db.k3aute9.mongodb.net/biogateDB?retryWrites=true&w=majority
+JWT_SECRET=biogate_guvenlik_anahtari_2026
+EMAIL_USER=biogate.app@gmail.com
+EMAIL_PASS=svnxxjcvcxxiskbu
+
+================================================
+DOSYA: Back-End/controllers/authController.js
+================================================
+const User = require('../models/User');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+// Admin Giriş İşlemi
+exports.adminLogin = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        // 1. Alanların doluluğunu kontrol et
+        if (!email || !password) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Lütfen e-posta ve şifrenizi girin.' 
+            });
+        }
+
+        // 2. Kullanıcıyı bul
+        const user = await User.findOne({ email: email.toLowerCase().trim() });
+        if (!user) {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'Geçersiz e-posta veya şifre.' 
+            });
+        }
+
+        // 3. Rol kontrolü (Sadece admin girebilir)
+        if (user.role !== 'admin') {
+            return res.status(403).json({ 
+                success: false, 
+                message: 'Erişim reddedildi: Yönetici yetkiniz bulunmuyor.' 
+            });
+        }
+
+        // 4. Şifre kontrolü
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'Geçersiz e-posta veya şifre.' 
+            });
+        }
+
+        // 5. JWT Token Üretimi (8 saat geçerli)
+        const token = jwt.sign(
+            { id: user._id, role: user.role, email: user.email },
+            process.env.JWT_SECRET,
+            { expiresIn: '8h' }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: 'Giriş başarılı!',
+            token,
+            user: {
+                id: user._id,
+                fullName: user.fullName,
+                email: user.email,
+                role: user.role
+            }
+        });
+
+    } catch (error) {
+        console.error('Login Hatası:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Sunucu tarafında bir hata oluştu.' 
+        });
+    }
+};
+
+================================================
+DOSYA: Back-End/controllers/logController.js
+================================================
+const Log = require('../models/Log');
+
+// Tüm logları getirme (En yeniden en eskiye doğru sıralı)
+exports.getLogs = async (req, res) => {
+    try {
+        // Son 50 log kaydını tarihe göre azalan (descending) şekilde çek
+        const logs = await Log.find().sort({ createdAt: -1 }).limit(50);
+        
+        res.status(200).json({
+            success: true,
+            count: logs.length,
+            data: logs
+        });
+    } catch (error) {
+        console.error('Logları çekerken hata:', error);
+        res.status(500).json({ success: false, message: 'Sunucu hatası, loglar alınamadı.' });
+    }
+};
+
+================================================
+DOSYA: Back-End/controllers/otpController.js
+================================================
+const Otp = require('../models/Otp');
+const User = require('../models/User');
+const nodemailer = require('nodemailer');
+
+// E-posta gönderici ayarları (Nodemailer)
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    }
+});
+
+// 1. Şifre Üretme ve Gönderme İşlemi
+exports.sendOtp = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ success: false, message: 'Lütfen e-posta adresi girin.' });
+        }
+
+        // Güvenlik: Kullanıcı sistemde kayıtlı mı kontrol et
+        const user = await User.findOne({ email: email.toLowerCase().trim() });
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'Bu e-posta sistemde kayıtlı değil.' });
+        }
+
+        // 6 haneli rastgele OTP üret (100000 - 999999 arası)
+        const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // Spam'i önlemek için kullanıcının eski OTP kayıtlarını sil
+        await Otp.deleteMany({ email: user.email });
+
+        // Yeni kodu veritabanına kaydet (TTL index sayesinde 3 dk sonra silinecek)
+        await Otp.create({
+            email: user.email,
+            otpCode: otpCode
+        });
+
+        // Mail içeriğini hazırla ve gönder
+        const mailOptions = {
+            from: `"BioGate Güvenlik Sistemi" <${process.env.EMAIL_USER}>`,
+            to: user.email,
+            subject: 'BioGate - Geçiş Doğrulama Kodunuz',
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+                    <h2 style="color: #111827;">BioGate Geçiş Doğrulaması</h2>
+                    <p>Sisteme giriş yapmak için tek kullanımlık şifreniz oluşturulmuştur.</p>
+                    <div style="background-color: #f3f4f6; padding: 15px; font-size: 28px; font-weight: bold; letter-spacing: 8px; text-align: center; border-radius: 8px; margin: 20px 0;">
+                        ${otpCode}
+                    </div>
+                    <p style="color: #ef4444; font-size: 14px;">Bu kod <strong>3 dakika</strong> boyunca geçerlidir. Lütfen güvenlik personeliniz dahil kimseyle paylaşmayın.</p>
+                </div>
+            `
+        };
+
+        await transporter.sendMail(mailOptions);
+
+        res.status(200).json({ success: true, message: 'OTP e-posta adresinize gönderildi.' });
+
+    } catch (error) {
+        console.error('OTP Gönderme Hatası:', error);
+        res.status(500).json({ success: false, message: 'Kod gönderilirken bir hata oluştu.' });
+    }
+};
+
+// 2. Gelen Şifreyi Doğrulama İşlemi
+exports.verifyOtp = async (req, res) => {
+    try {
+        const { email, otpCode } = req.body;
+
+        if (!email || !otpCode) {
+            return res.status(400).json({ success: false, message: 'E-posta ve kod gereklidir.' });
+        }
+
+        // Veritabanında eşleşen aktif kodu bul
+        const validOtp = await Otp.findOne({ email: email.toLowerCase().trim(), otpCode: otpCode });
+
+        if (!validOtp) {
+            return res.status(400).json({ success: false, message: 'Hatalı veya süresi dolmuş kod!' });
+        }
+
+        // Doğrulama başarılıysa kodu hemen sil (tek kullanımlık olması için)
+        await Otp.deleteOne({ _id: validOtp._id });
+
+        res.status(200).json({ success: true, message: 'Doğrulama başarılı, kapı açılıyor.' });
+
+    } catch (error) {
+        console.error('OTP Doğrulama Hatası:', error);
+        res.status(500).json({ success: false, message: 'Doğrulama sırasında hata oluştu.' });
+    }
+};
+
+================================================
+DOSYA: Back-End/middleware/authMiddleware.js
+================================================
+const jwt = require('jsonwebtoken');
+
+module.exports = (req, res, next) => {
+    // 1. İstek başlığından (Header) token'ı al (Bearer <token> formatında gelir)
+    const authHeader = req.header('Authorization');
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ success: false, message: 'Erişim reddedildi: Token bulunamadı.' });
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    try {
+        // 2. Token'ın gerçekliğini ve süresini kontrol et
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        // 3. Çözülen kullanıcı bilgilerini isteğin (req) içine yerleştir
+        req.user = decoded;
+        
+        // 4. Yetki kontrolü: Sadece admin mi?
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ success: false, message: 'Erişim reddedildi: Yetkisiz rol.' });
+        }
+
+        // Geçiş izni ver, asıl controller'a devam et
+        next();
+    } catch (error) {
+        return res.status(401).json({ success: false, message: 'Geçersiz veya süresi dolmuş token.' });
+    }
+};
+
+================================================
+DOSYA: Back-End/models/Log.js
+================================================
+const mongoose = require('mongoose');
+
+const logSchema = new mongoose.Schema({
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null
+    },
+    userName: {
+        type: String,
+        default: 'Bilinmiyor'
+    },
+    eventType: {
+        type: String,
+        required: true // Örn: 'Yüz + OTP Doğrulama', 'Canlılık Tespiti Başarısız'
+    },
+    status: {
+        type: String,
+        enum: ['success', 'warning', 'danger'],
+        required: true // adminAnaSayfa tablosundaki rozet renklerini belirler
+    },
+    statusText: {
+        type: String,
+        required: true // Örn: 'Giriş Başarılı', 'Hatalı OTP', 'Sahte Yüz (Fotoğraf)'
+    },
+    evidenceImage: {
+        type: String, // İhlal anında çekilen fotoğrafın dosya yolu veya base64 verisi
+        default: null
+    }
+}, {
+    timestamps: true
+});
+
+module.exports = mongoose.model('Log', logSchema);
+
+================================================
+DOSYA: Back-End/models/Otp.js
+================================================
+const mongoose = require('mongoose');
+
+const otpSchema = new mongoose.Schema({
+    email: {
+        type: String,
+        required: true,
+        lowercase: true,
+        trim: true
+    },
+    otpCode: {
+        type: String,
+        required: true
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now,
+        expires: 180 // TTL Index: 180 saniye (3 dakika) sonra MongoDB bu kaydı otomatik siler
+    }
+});
+
+module.exports = mongoose.model('Otp', otpSchema);
+
+================================================
+DOSYA: Back-End/models/User.js
+================================================
+const mongoose = require('mongoose');
+
+const userSchema = new mongoose.Schema({
+    fullName: {
+        type: String,
+        required: [true, 'Ad Soyad alanı zorunludur.'],
+        trim: true
+    },
+    email: {
+        type: String,
+        required: [true, 'E-posta alanı zorunludur.'],
+        unique: true,
+        lowercase: true,
+        trim: true
+    },
+    password: {
+        type: String,
+        // Sadece admin girişi yapacak yöneticiler için gereklidir
+        default: null
+    },
+    role: {
+        type: String,
+        enum: ['standard', 'admin'],
+        default: 'standard'
+    },
+    faceDescriptor: {
+        type: [Number], // 128 boyutlu yüz embedding vektörü
+        default: []
+    },
+    isActive: {
+        type: Boolean,
+        default: true
+    }
+}, {
+    timestamps: true
+});
+
+module.exports = mongoose.model('User', userSchema);
+
+================================================
+DOSYA: Back-End/package-lock.json
+================================================
+{
+  "name": "back-end",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "back-end",
+      "version": "1.0.0",
+      "license": "ISC",
+      "dependencies": {
+        "bcryptjs": "^3.0.3",
+        "cors": "^2.8.6",
+        "dotenv": "^18.0.9",
+        "express": "^5.3.0",
+        "jsonwebtoken": "^9.0.3",
+        "mongoose": "^9.11.4",
+        "nodemailer": "^10.2.1"
+      }
+    },
+    "node_modules/@mongodb-js/saslprep": {
+      "version": "1.6.1",
+      "resolved": "https://registry.npmjs.org/@mongodb-js/saslprep/-/saslprep-1.6.1.tgz",
+      "integrity": "sha512-D4CQtk9IwjCLAvCf1xvHEod3960q8XMUzfmdRU9qjUNlHnesGuTOvJcOTaPm9koZ1caUKA2aTbszZiAkcmSgmg==",
+      "license": "MIT",
+      "dependencies": {
+        "sparse-bitfield": "^3.0.3"
+      }
+    },
+    "node_modules/@standard-schema/spec": {
+      "version": "1.1.0",
+      "resolved": "https://registry.npmjs.org/@standard-schema/spec/-/spec-1.1.0.tgz",
+      "integrity": "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==",
+      "license": "MIT"
+    },
+    "node_modules/@types/webidl-conversions": {
+      "version": "7.0.3",
+      "resolved": "https://registry.npmjs.org/@types/webidl-conversions/-/webidl-conversions-7.0.3.tgz",
+      "integrity": "sha512-CiJJvcRtIgzadHCYXw7dqEnMNRjhGZlYK05Mj9OyktqV8uVT8fD2BFOB7S1uwBE3Kj2Z+4UyPmFw/Ixgw/LAlA==",
+      "license": "MIT"
+    },
+    "node_modules/@types/whatwg-url": {
+      "version": "13.0.0",
+      "resolved": "https://registry.npmjs.org/@types/whatwg-url/-/whatwg-url-13.0.0.tgz",
+      "integrity": "sha512-N8WXpbE6Wgri7KUSvrmQcqrMllKZ9uxkYWMt+mCSGwNc0Hsw9VQTW7ApqI4XNrx6/SaM2QQJCzMPDEXE058s+Q==",
+      "license": "MIT",
+      "dependencies": {
+        "@types/webidl-conversions": "*"
+      }
+    },
+    "node_modules/accepts": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/accepts/-/accepts-2.0.0.tgz",
+      "integrity": "sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==",
+      "license": "MIT",
+      "dependencies": {
+        "mime-types": "^3.0.0",
+        "negotiator": "^1.0.0"
+      },
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/bcryptjs": {
+      "version": "3.0.3",
+      "resolved": "https://registry.npmjs.org/bcryptjs/-/bcryptjs-3.0.3.tgz",
+      "integrity": "sha512-GlF5wPWnSa/X5LKM1o0wz0suXIINz1iHRLvTS+sLyi7XPbe5ycmYI3DlZqVGZZtDgl4DmasFg7gOB3JYbphV5g==",
+      "license": "BSD-3-Clause",
+      "bin": {
+        "bcrypt": "bin/bcrypt"
+      }
+    },
+    "node_modules/body-parser": {
+      "version": "2.4.0",
+      "resolved": "https://registry.npmjs.org/body-parser/-/body-parser-2.4.0.tgz",
+      "integrity": "sha512-Ifk1KcLrxaGt1occQagQNFNNOqRt1LFuehEnHHzB8Z6cRgIxRU1TBaiIsUiCdA+gy5PL7Y1IX31DNKkRmxtXjQ==",
+      "license": "MIT",
+      "dependencies": {
+        "bytes": "^3.1.2",
+        "content-type": "^2.1.0",
+        "debug": "^4.4.3",
+        "http-errors": "^2.0.1",
+        "iconv-lite": "^0.7.3",
+        "on-finished": "^2.4.1",
+        "qs": "^6.16.1",
+        "raw-body": "^3.0.2",
+        "type-is": "^2.1.0"
+      },
+      "engines": {
+        "node": ">=18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/bson": {
+      "version": "7.3.3",
+      "resolved": "https://registry.npmjs.org/bson/-/bson-7.3.3.tgz",
+      "integrity": "sha512-oz3LwE3qGEhTCSyhzQRLY3Bj1NLOsjFMf6tcmY5J8M+3R7EVcmoBfSHWvjUK3yXCLDUsGpIuB3aQL4nDZ1EV/g==",
+      "license": "Apache-2.0",
+      "engines": {
+        "node": ">=20.19.0"
+      }
+    },
+    "node_modules/buffer-equal-constant-time": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/buffer-equal-constant-time/-/buffer-equal-constant-time-1.0.1.tgz",
+      "integrity": "sha512-zRpUiDwd/xk6ADqPMATG8vc9VPrkck7T07OIx0gnjmJAnHnTVXNQG3vfvWNuiZIkwu9KrKdA1iJKfsfTVxE6NA==",
+      "license": "BSD-3-Clause"
+    },
+    "node_modules/bytes": {
+      "version": "3.1.2",
+      "resolved": "https://registry.npmjs.org/bytes/-/bytes-3.1.2.tgz",
+      "integrity": "sha512-/Nf7TyzTx6S3yRJObOAV7956r8cr2+Oj8AC5dt8wSP3BQAoeX58NoHyCU8P8zGkNXStjTSi6fzO6F0pBdcYbEg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/call-bind-apply-helpers": {
+      "version": "1.0.2",
+      "resolved": "https://registry.npmjs.org/call-bind-apply-helpers/-/call-bind-apply-helpers-1.0.2.tgz",
+      "integrity": "sha512-Sp1ablJ0ivDkSzjcaJdxEunN5/XvksFJ2sMBFfq6x0ryhQV/2b/KwFe21cMpmHtPOSij8K99/wSfoEuTObmuMQ==",
+      "license": "MIT",
+      "dependencies": {
+        "es-errors": "^1.3.0",
+        "function-bind": "^1.1.2"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/call-bound": {
+      "version": "1.0.4",
+      "resolved": "https://registry.npmjs.org/call-bound/-/call-bound-1.0.4.tgz",
+      "integrity": "sha512-+ys997U96po4Kx/ABpBCqhA9EuxJaQWDQg7295H4hBphv3IZg0boBKuwYpt4YXp6MZ5AmZQnU/tyMTlRpaSejg==",
+      "license": "MIT",
+      "dependencies": {
+        "call-bind-apply-helpers": "^1.0.2",
+        "get-intrinsic": "^1.3.0"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/content-disposition": {
+      "version": "2.0.1",
+      "resolved": "https://registry.npmjs.org/content-disposition/-/content-disposition-2.0.1.tgz",
+      "integrity": "sha512-e+H0ZXHSWYrENhQzw1LPuP4oF5MzVKmDU6d3hxlvaPEYLLg62MxtQNPRx4SYSuYJSBUgnQIG4HIN2tEtNv7Dog==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/content-type": {
+      "version": "2.1.0",
+      "resolved": "https://registry.npmjs.org/content-type/-/content-type-2.1.0.tgz",
+      "integrity": "sha512-mj7UPXE0jaqaOsukNZRUEfEi2AcL7C/vwmwcHV0O97eO1E1pxBZuyjlZrx5seTaNBg1U6+o35wpa35Qfcc+7ag==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/cookie": {
+      "version": "0.7.2",
+      "resolved": "https://registry.npmjs.org/cookie/-/cookie-0.7.2.tgz",
+      "integrity": "sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/cookie-signature": {
+      "version": "1.2.2",
+      "resolved": "https://registry.npmjs.org/cookie-signature/-/cookie-signature-1.2.2.tgz",
+      "integrity": "sha512-D76uU73ulSXrD1UXF4KE2TMxVVwhsnCgfAyTg9k8P6KGZjlXKrOLe4dJQKI3Bxi5wjesZoFXJWElNWBjPZMbhg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=6.6.0"
+      }
+    },
+    "node_modules/cors": {
+      "version": "2.8.6",
+      "resolved": "https://registry.npmjs.org/cors/-/cors-2.8.6.tgz",
+      "integrity": "sha512-tJtZBBHA6vjIAaF6EnIaq6laBBP9aq/Y3ouVJjEfoHbRBcHBAHYcMh/w8LDrk2PvIMMq8gmopa5D4V8RmbrxGw==",
+      "license": "MIT",
+      "dependencies": {
+        "object-assign": "^4",
+        "vary": "^1"
+      },
+      "engines": {
+        "node": ">= 0.10"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/debug": {
+      "version": "4.4.3",
+      "resolved": "https://registry.npmjs.org/debug/-/debug-4.4.3.tgz",
+      "integrity": "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==",
+      "license": "MIT",
+      "dependencies": {
+        "ms": "^2.1.3"
+      },
+      "engines": {
+        "node": ">=6.0"
+      },
+      "peerDependenciesMeta": {
+        "supports-color": {
+          "optional": true
+        }
+      }
+    },
+    "node_modules/depd": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/depd/-/depd-2.0.0.tgz",
+      "integrity": "sha512-g7nH6P6dyDioJogAAGprGpCtVImJhpPk/roCzdb3fIh61/s/nPsfR6onyMwkCAR/OlC3yBC0lESvUoQEAssIrw==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/dotenv": {
+      "version": "18.0.9",
+      "resolved": "https://registry.npmjs.org/dotenv/-/dotenv-18.0.9.tgz",
+      "integrity": "sha512-3fVOW4cB02R066PUSwn8O4TJyz9NckQl7F81blIbaq9jKBm2tSmOKky7ZHIXzGvkVPXCSn6jkpziBPZdGFs8Tw==",
+      "license": "BSD-2-Clause",
+      "bin": {
+        "dotenv": "dist/index.cjs"
+      },
+      "engines": {
+        "node": ">=12"
+      },
+      "funding": {
+        "url": "https://dotenvx.com"
+      }
+    },
+    "node_modules/dunder-proto": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/dunder-proto/-/dunder-proto-1.0.1.tgz",
+      "integrity": "sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==",
+      "license": "MIT",
+      "dependencies": {
+        "call-bind-apply-helpers": "^1.0.1",
+        "es-errors": "^1.3.0",
+        "gopd": "^1.2.0"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/ecdsa-sig-formatter": {
+      "version": "1.0.11",
+      "resolved": "https://registry.npmjs.org/ecdsa-sig-formatter/-/ecdsa-sig-formatter-1.0.11.tgz",
+      "integrity": "sha512-nagl3RYrbNv6kQkeJIpt6NJZy8twLB/2vtz6yN9Z4vRKHN4/QZJIEbqohALSgwKdnksuY3k5Addp5lg8sVoVcQ==",
+      "license": "Apache-2.0",
+      "dependencies": {
+        "safe-buffer": "^5.0.1"
+      }
+    },
+    "node_modules/ee-first": {
+      "version": "1.1.1",
+      "resolved": "https://registry.npmjs.org/ee-first/-/ee-first-1.1.1.tgz",
+      "integrity": "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==",
+      "license": "MIT"
+    },
+    "node_modules/encodeurl": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/encodeurl/-/encodeurl-2.0.0.tgz",
+      "integrity": "sha512-Q0n9HRi4m6JuGIV1eFlmvJB7ZEVxu93IrMyiMsGC0lrMJMWzRgx6WGquyfQgZVb31vhGgXnfmPNNXmxnOkRBrg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/es-define-property": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/es-define-property/-/es-define-property-1.0.1.tgz",
+      "integrity": "sha512-e3nRfgfUZ4rNGL232gUgX06QNyyez04KdjFrF+LTRoOXmrOgFKDg4BCdsjW8EnT69eqdYGmRpJwiPVYNrCaW3g==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/es-errors": {
+      "version": "1.3.0",
+      "resolved": "https://registry.npmjs.org/es-errors/-/es-errors-1.3.0.tgz",
+      "integrity": "sha512-Zf5H2Kxt2xjTvbJvP2ZWLEICxA6j+hAmMzIlypy4xcBg1vKVnx89Wy0GbS+kf5cwCVFFzdCFh2XSCFNULS6csw==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/es-object-atoms": {
+      "version": "1.1.2",
+      "resolved": "https://registry.npmjs.org/es-object-atoms/-/es-object-atoms-1.1.2.tgz",
+      "integrity": "sha512-HWcBoN6NileqtSydK2FqHbS/LoDd2pqrnQHLyJzBj4kOp/ky2MWMN694xOfkK8/SnUsW2DH7EfyVlydKCsm1Zw==",
+      "license": "MIT",
+      "dependencies": {
+        "es-errors": "^1.3.0"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/escape-html": {
+      "version": "1.0.3",
+      "resolved": "https://registry.npmjs.org/escape-html/-/escape-html-1.0.3.tgz",
+      "integrity": "sha512-NiSupZ4OeuGwr68lGIeym/ksIZMJodUGOSCZ/FSnTxcrekbvqrgdUxlJOMpijaKZVjAJrWrGs/6Jy8OMuyj9ow==",
+      "license": "MIT"
+    },
+    "node_modules/etag": {
+      "version": "1.8.1",
+      "resolved": "https://registry.npmjs.org/etag/-/etag-1.8.1.tgz",
+      "integrity": "sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/express": {
+      "version": "5.3.0",
+      "resolved": "https://registry.npmjs.org/express/-/express-5.3.0.tgz",
+      "integrity": "sha512-qCqy1xSoaugxOD4IVHb1ZWdkvCF2W3aE2okKouWj8VwJ+ztskSiXoBnCSJqfKT+cVPJhuJqe9YLbY425+Zh00g==",
+      "license": "MIT",
+      "dependencies": {
+        "accepts": "^2.0.0",
+        "body-parser": "^2.3.0",
+        "content-disposition": "^2.0.1",
+        "content-type": "^2.0.0",
+        "cookie": "^0.7.1",
+        "cookie-signature": "^1.2.1",
+        "debug": "^4.4.0",
+        "depd": "^2.0.0",
+        "encodeurl": "^2.0.0",
+        "escape-html": "^1.0.3",
+        "etag": "^1.8.1",
+        "finalhandler": "^2.1.0",
+        "fresh": "^2.0.0",
+        "http-errors": "^2.0.0",
+        "merge-descriptors": "^2.0.0",
+        "mime-types": "^3.0.0",
+        "on-finished": "^2.4.1",
+        "once": "^1.4.0",
+        "parseurl": "^1.3.3",
+        "proxy-addr": "^2.0.8",
+        "qs": "^6.16.0",
+        "range-parser": "^1.2.1",
+        "router": "^2.2.0",
+        "send": "^1.1.0",
+        "serve-static": "^2.2.0",
+        "statuses": "^2.0.1",
+        "type-is": "^2.1.0",
+        "vary": "^1.1.2"
+      },
+      "engines": {
+        "node": ">= 18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/finalhandler": {
+      "version": "2.1.1",
+      "resolved": "https://registry.npmjs.org/finalhandler/-/finalhandler-2.1.1.tgz",
+      "integrity": "sha512-S8KoZgRZN+a5rNwqTxlZZePjT/4cnm0ROV70LedRHZ0p8u9fRID0hJUZQpkKLzro8LfmC8sx23bY6tVNxv8pQA==",
+      "license": "MIT",
+      "dependencies": {
+        "debug": "^4.4.0",
+        "encodeurl": "^2.0.0",
+        "escape-html": "^1.0.3",
+        "on-finished": "^2.4.1",
+        "parseurl": "^1.3.3",
+        "statuses": "^2.0.1"
+      },
+      "engines": {
+        "node": ">= 18.0.0"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/forwarded": {
+      "version": "0.2.0",
+      "resolved": "https://registry.npmjs.org/forwarded/-/forwarded-0.2.0.tgz",
+      "integrity": "sha512-buRG0fpBtRHSTCOASe6hD258tEubFoRLb4ZNA6NxMVHNw2gOcwHo9wyablzMzOA5z9xA9L1KNjk/Nt6MT9aYow==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/fresh": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/fresh/-/fresh-2.0.0.tgz",
+      "integrity": "sha512-Rx/WycZ60HOaqLKAi6cHRKKI7zxWbJ31MhntmtwMoaTeF7XFH9hhBp8vITaMidfljRQ6eYWCKkaTK+ykVJHP2A==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/function-bind": {
+      "version": "1.1.2",
+      "resolved": "https://registry.npmjs.org/function-bind/-/function-bind-1.1.2.tgz",
+      "integrity": "sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA==",
+      "license": "MIT",
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/get-intrinsic": {
+      "version": "1.3.0",
+      "resolved": "https://registry.npmjs.org/get-intrinsic/-/get-intrinsic-1.3.0.tgz",
+      "integrity": "sha512-9fSjSaos/fRIVIp+xSJlE6lfwhES7LNtKaCBIamHsjr2na1BiABJPo0mOjjz8GJDURarmCPGqaiVg5mfjb98CQ==",
+      "license": "MIT",
+      "dependencies": {
+        "call-bind-apply-helpers": "^1.0.2",
+        "es-define-property": "^1.0.1",
+        "es-errors": "^1.3.0",
+        "es-object-atoms": "^1.1.1",
+        "function-bind": "^1.1.2",
+        "get-proto": "^1.0.1",
+        "gopd": "^1.2.0",
+        "has-symbols": "^1.1.0",
+        "hasown": "^2.0.2",
+        "math-intrinsics": "^1.1.0"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/get-proto": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/get-proto/-/get-proto-1.0.1.tgz",
+      "integrity": "sha512-sTSfBjoXBp89JvIKIefqw7U2CCebsc74kiY6awiGogKtoSGbgjYE/G/+l9sF3MWFPNc9IcoOC4ODfKHfxFmp0g==",
+      "license": "MIT",
+      "dependencies": {
+        "dunder-proto": "^1.0.1",
+        "es-object-atoms": "^1.0.0"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/gopd": {
+      "version": "1.2.0",
+      "resolved": "https://registry.npmjs.org/gopd/-/gopd-1.2.0.tgz",
+      "integrity": "sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/has-symbols": {
+      "version": "1.1.0",
+      "resolved": "https://registry.npmjs.org/has-symbols/-/has-symbols-1.1.0.tgz",
+      "integrity": "sha512-1cDNdwJ2Jaohmb3sg4OmKaMBwuC48sYni5HUw2DvsC8LjGTLK9h+eb1X6RyuOHe4hT0ULCW68iomhjUoKUqlPQ==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/hasown": {
+      "version": "2.0.4",
+      "resolved": "https://registry.npmjs.org/hasown/-/hasown-2.0.4.tgz",
+      "integrity": "sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==",
+      "license": "MIT",
+      "dependencies": {
+        "function-bind": "^1.1.2"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/http-errors": {
+      "version": "2.0.1",
+      "resolved": "https://registry.npmjs.org/http-errors/-/http-errors-2.0.1.tgz",
+      "integrity": "sha512-4FbRdAX+bSdmo4AUFuS0WNiPz8NgFt+r8ThgNWmlrjQjt1Q7ZR9+zTlce2859x4KSXrwIsaeTqDoKQmtP8pLmQ==",
+      "license": "MIT",
+      "dependencies": {
+        "depd": "~2.0.0",
+        "inherits": "~2.0.4",
+        "setprototypeof": "~1.2.0",
+        "statuses": "~2.0.2",
+        "toidentifier": "~1.0.1"
+      },
+      "engines": {
+        "node": ">= 0.8"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/iconv-lite": {
+      "version": "0.7.3",
+      "resolved": "https://registry.npmjs.org/iconv-lite/-/iconv-lite-0.7.3.tgz",
+      "integrity": "sha512-IKXpvIzjnC9XTAUbVBcMfGS0EPaIXtW6v+zr+RRp+hqULEpo0owZax6wyRwPOJbWbzjYspQwusTsfVr0ifh4uQ==",
+      "license": "MIT",
+      "dependencies": {
+        "safer-buffer": ">= 2.1.2 < 3.0.0"
+      },
+      "engines": {
+        "node": ">=0.10.0"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/inherits": {
+      "version": "2.0.4",
+      "resolved": "https://registry.npmjs.org/inherits/-/inherits-2.0.4.tgz",
+      "integrity": "sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==",
+      "license": "ISC"
+    },
+    "node_modules/ipaddr.js": {
+      "version": "1.9.1",
+      "resolved": "https://registry.npmjs.org/ipaddr.js/-/ipaddr.js-1.9.1.tgz",
+      "integrity": "sha512-0KI/607xoxSToH7GjN1FfSbLoU0+btTicjsQSWQlh/hZykN8KpmMf7uYwPW3R+akZ6R/w18ZlXSHBYXiYUPO3g==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.10"
+      }
+    },
+    "node_modules/is-promise": {
+      "version": "4.0.0",
+      "resolved": "https://registry.npmjs.org/is-promise/-/is-promise-4.0.0.tgz",
+      "integrity": "sha512-hvpoI6korhJMnej285dSg6nu1+e6uxs7zG3BYAm5byqDsgJNWwxzM6z6iZiAgQR4TJ30JmBTOwqZUw3WlyH3AQ==",
+      "license": "MIT"
+    },
+    "node_modules/jsonwebtoken": {
+      "version": "9.0.3",
+      "resolved": "https://registry.npmjs.org/jsonwebtoken/-/jsonwebtoken-9.0.3.tgz",
+      "integrity": "sha512-MT/xP0CrubFRNLNKvxJ2BYfy53Zkm++5bX9dtuPbqAeQpTVe0MQTFhao8+Cp//EmJp244xt6Drw/GVEGCUj40g==",
+      "license": "MIT",
+      "dependencies": {
+        "jws": "^4.0.1",
+        "lodash.includes": "^4.3.0",
+        "lodash.isboolean": "^3.0.3",
+        "lodash.isinteger": "^4.0.4",
+        "lodash.isnumber": "^3.0.3",
+        "lodash.isplainobject": "^4.0.6",
+        "lodash.isstring": "^4.0.1",
+        "lodash.once": "^4.0.0",
+        "ms": "^2.1.1",
+        "semver": "^7.5.4"
+      },
+      "engines": {
+        "node": ">=12",
+        "npm": ">=6"
+      }
+    },
+    "node_modules/jwa": {
+      "version": "2.0.1",
+      "resolved": "https://registry.npmjs.org/jwa/-/jwa-2.0.1.tgz",
+      "integrity": "sha512-hRF04fqJIP8Abbkq5NKGN0Bbr3JxlQ+qhZufXVr0DvujKy93ZCbXZMHDL4EOtodSbCWxOqR8MS1tXA5hwqCXDg==",
+      "license": "MIT",
+      "dependencies": {
+        "buffer-equal-constant-time": "^1.0.1",
+        "ecdsa-sig-formatter": "1.0.11",
+        "safe-buffer": "^5.0.1"
+      }
+    },
+    "node_modules/jws": {
+      "version": "4.0.1",
+      "resolved": "https://registry.npmjs.org/jws/-/jws-4.0.1.tgz",
+      "integrity": "sha512-EKI/M/yqPncGUUh44xz0PxSidXFr/+r0pA70+gIYhjv+et7yxM+s29Y+VGDkovRofQem0fs7Uvf4+YmAdyRduA==",
+      "license": "MIT",
+      "dependencies": {
+        "jwa": "^2.0.1",
+        "safe-buffer": "^5.0.1"
+      }
+    },
+    "node_modules/kareem": {
+      "version": "3.4.1",
+      "resolved": "https://registry.npmjs.org/kareem/-/kareem-3.4.1.tgz",
+      "integrity": "sha512-UlgCAFNAdk/HLSsbfkmbH8pJqpEN52Ek8RG53Ys1i3Q3gbCQruSrWpplZlgIGyDHX/LNoLW97ei3OG43s7UhUA==",
+      "license": "Apache-2.0",
+      "engines": {
+        "node": ">=18.0.0"
+      }
+    },
+    "node_modules/lodash.includes": {
+      "version": "4.3.0",
+      "resolved": "https://registry.npmjs.org/lodash.includes/-/lodash.includes-4.3.0.tgz",
+      "integrity": "sha512-W3Bx6mdkRTGtlJISOvVD/lbqjTlPPUDTMnlXZFnVwi9NKJ6tiAk6LVdlhZMm17VZisqhKcgzpO5Wz91PCt5b0w==",
+      "license": "MIT"
+    },
+    "node_modules/lodash.isboolean": {
+      "version": "3.0.3",
+      "resolved": "https://registry.npmjs.org/lodash.isboolean/-/lodash.isboolean-3.0.3.tgz",
+      "integrity": "sha512-Bz5mupy2SVbPHURB98VAcw+aHh4vRV5IPNhILUCsOzRmsTmSQ17jIuqopAentWoehktxGd9e/hbIXq980/1QJg==",
+      "license": "MIT"
+    },
+    "node_modules/lodash.isinteger": {
+      "version": "4.0.4",
+      "resolved": "https://registry.npmjs.org/lodash.isinteger/-/lodash.isinteger-4.0.4.tgz",
+      "integrity": "sha512-DBwtEWN2caHQ9/imiNeEA5ys1JoRtRfY3d7V9wkqtbycnAmTvRRmbHKDV4a0EYc678/dia0jrte4tjYwVBaZUA==",
+      "license": "MIT"
+    },
+    "node_modules/lodash.isnumber": {
+      "version": "3.0.3",
+      "resolved": "https://registry.npmjs.org/lodash.isnumber/-/lodash.isnumber-3.0.3.tgz",
+      "integrity": "sha512-QYqzpfwO3/CWf3XP+Z+tkQsfaLL/EnUlXWVkIk5FUPc4sBdTehEqZONuyRt2P67PXAk+NXmTBcc97zw9t1FQrw==",
+      "license": "MIT"
+    },
+    "node_modules/lodash.isplainobject": {
+      "version": "4.0.6",
+      "resolved": "https://registry.npmjs.org/lodash.isplainobject/-/lodash.isplainobject-4.0.6.tgz",
+      "integrity": "sha512-oSXzaWypCMHkPC3NvBEaPHf0KsA5mvPrOPgQWDsbg8n7orZ290M0BmC/jgRZ4vcJ6DTAhjrsSYgdsW/F+MFOBA==",
+      "license": "MIT"
+    },
+    "node_modules/lodash.isstring": {
+      "version": "4.0.1",
+      "resolved": "https://registry.npmjs.org/lodash.isstring/-/lodash.isstring-4.0.1.tgz",
+      "integrity": "sha512-0wJxfxH1wgO3GrbuP+dTTk7op+6L41QCXbGINEmD+ny/G/eCqGzxyCsh7159S+mgDDcoarnBw6PC1PS5+wUGgw==",
+      "license": "MIT"
+    },
+    "node_modules/lodash.once": {
+      "version": "4.1.1",
+      "resolved": "https://registry.npmjs.org/lodash.once/-/lodash.once-4.1.1.tgz",
+      "integrity": "sha512-Sb487aTOCr9drQVL8pIxOzVhafOjZN9UU54hiN8PU3uAiSV7lx1yYNpbNmex2PK6dSJoNTSJUUswT651yww3Mg==",
+      "license": "MIT"
+    },
+    "node_modules/math-intrinsics": {
+      "version": "1.1.0",
+      "resolved": "https://registry.npmjs.org/math-intrinsics/-/math-intrinsics-1.1.0.tgz",
+      "integrity": "sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      }
+    },
+    "node_modules/media-typer": {
+      "version": "1.1.1",
+      "resolved": "https://registry.npmjs.org/media-typer/-/media-typer-1.1.1.tgz",
+      "integrity": "sha512-yz3xRaG20c6/BOzvYoDaGtPmGscs7YivItZEEqe6GbwNfHuxu9YNmvnEkMzKldAGY4/80pRcQRZSEnhquk9XuQ==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/memory-pager": {
+      "version": "1.5.0",
+      "resolved": "https://registry.npmjs.org/memory-pager/-/memory-pager-1.5.0.tgz",
+      "integrity": "sha512-ZS4Bp4r/Zoeq6+NLJpP+0Zzm0pR8whtGPf1XExKLJBAczGMnSi3It14OiNCStjQjM6NU1okjQGSxgEZN8eBYKg==",
+      "license": "MIT"
+    },
+    "node_modules/merge-descriptors": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/merge-descriptors/-/merge-descriptors-2.0.0.tgz",
+      "integrity": "sha512-Snk314V5ayFLhp3fkUREub6WtjBfPdCPY1Ln8/8munuLuiYhsABgBVWsozAG+MWMbVEvcdcpbi9R7ww22l9Q3g==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=18"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/sindresorhus"
+      }
+    },
+    "node_modules/mime-db": {
+      "version": "1.54.0",
+      "resolved": "https://registry.npmjs.org/mime-db/-/mime-db-1.54.0.tgz",
+      "integrity": "sha512-aU5EJuIN2WDemCcAp2vFBfp/m4EAhWJnUNSSw0ixs7/kXbd6Pg64EmwJkNdFhB8aWt1sH2CTXrLxo/iAGV3oPQ==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      }
+    },
+    "node_modules/mime-types": {
+      "version": "3.0.2",
+      "resolved": "https://registry.npmjs.org/mime-types/-/mime-types-3.0.2.tgz",
+      "integrity": "sha512-Lbgzdk0h4juoQ9fCKXW4by0UJqj+nOOrI9MJ1sSj4nI8aI2eo1qmvQEie4VD1glsS250n15LsWsYtCugiStS5A==",
+      "license": "MIT",
+      "dependencies": {
+        "mime-db": "^1.54.0"
+      },
+      "engines": {
+        "node": ">=18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/mongodb": {
+      "version": "7.7.0",
+      "resolved": "https://registry.npmjs.org/mongodb/-/mongodb-7.7.0.tgz",
+      "integrity": "sha512-XG1xXEqyouAV8GCb3PuRaujofeXKpAJAPvXYWZgHl6Dz4QHSJ1nRLl0+GpqaLTwKvC0RFE9truOur34RNFY1nw==",
+      "license": "Apache-2.0",
+      "dependencies": {
+        "@mongodb-js/saslprep": "^1.5.0",
+        "bson": "^7.3.2",
+        "mongodb-connection-string-url": "^7.0.2"
+      },
+      "engines": {
+        "node": ">=20.19.0"
+      },
+      "peerDependencies": {
+        "@aws-sdk/credential-providers": "^3.806.0",
+        "@mongodb-js/zstd": "^7.0.0",
+        "gcp-metadata": "^7.0.1",
+        "kerberos": "^7.0.0",
+        "mongodb-client-encryption": "^7.2.0",
+        "snappy": "^7.3.2",
+        "socks": "^2.8.6"
+      },
+      "peerDependenciesMeta": {
+        "@aws-sdk/credential-providers": {
+          "optional": true
+        },
+        "@mongodb-js/zstd": {
+          "optional": true
+        },
+        "gcp-metadata": {
+          "optional": true
+        },
+        "kerberos": {
+          "optional": true
+        },
+        "mongodb-client-encryption": {
+          "optional": true
+        },
+        "snappy": {
+          "optional": true
+        },
+        "socks": {
+          "optional": true
+        }
+      }
+    },
+    "node_modules/mongodb-connection-string-url": {
+      "version": "7.0.2",
+      "resolved": "https://registry.npmjs.org/mongodb-connection-string-url/-/mongodb-connection-string-url-7.0.2.tgz",
+      "integrity": "sha512-ZoS07RoFqpKYQwAk59qmrx8+jJHNHU30UjlU96QktiGn1ltvDr+vCznLX5DiUBLEpMAHatHNWV1nM/74ul66kA==",
+      "license": "Apache-2.0",
+      "dependencies": {
+        "@types/whatwg-url": "^13.0.0",
+        "whatwg-url": "^14.1.0"
+      },
+      "engines": {
+        "node": ">=20.19.0"
+      }
+    },
+    "node_modules/mongoose": {
+      "version": "9.11.4",
+      "resolved": "https://registry.npmjs.org/mongoose/-/mongoose-9.11.4.tgz",
+      "integrity": "sha512-+xME0fduXl1sWF+NZpJHZaNcwQSt+X2vbJ/h7GRSZ/ltLycAkGZSEABhzic0+q3IMF66KqF0viEE5+frchKCAQ==",
+      "license": "MIT",
+      "dependencies": {
+        "@standard-schema/spec": "^1.1.0",
+        "kareem": "3.4.1",
+        "mongodb": "~7.7",
+        "mpath": "0.9.0",
+        "mquery": "6.0.1",
+        "ms": "2.1.3",
+        "sift": "17.1.3"
+      },
+      "engines": {
+        "node": ">=20.19.0"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/mongoose"
+      }
+    },
+    "node_modules/mpath": {
+      "version": "0.9.0",
+      "resolved": "https://registry.npmjs.org/mpath/-/mpath-0.9.0.tgz",
+      "integrity": "sha512-ikJRQTk8hw5DEoFVxHG1Gn9T/xcjtdnOKIU1JTmGjZZlg9LST2mBLmcX3/ICIbgJydT2GOc15RnNy5mHmzfSew==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=4.0.0"
+      }
+    },
+    "node_modules/mquery": {
+      "version": "6.0.1",
+      "resolved": "https://registry.npmjs.org/mquery/-/mquery-6.0.1.tgz",
+      "integrity": "sha512-/Nijmq3JcpHwDM+5CwBp5yEl6fUa6jLsIhPsoQywlGXU/ZrKIvSpBzfaGnW9BLqcne/CoUwd1ch7MRqptDgFTA==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=20.19.0"
+      }
+    },
+    "node_modules/ms": {
+      "version": "2.1.3",
+      "resolved": "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz",
+      "integrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==",
+      "license": "MIT"
+    },
+    "node_modules/negotiator": {
+      "version": "1.1.0",
+      "resolved": "https://registry.npmjs.org/negotiator/-/negotiator-1.1.0.tgz",
+      "integrity": "sha512-NMPBRMJgiQHjbd8phG3Vebdx4kZ1H121rbl5IkMqeOsahptB9BKo/d7oJ3zTXqTgagn2bWlNSXkh0QUGM31RYg==",
+      "license": "MIT",
+      "dependencies": {
+        "content-type": "^2.1.0"
+      },
+      "engines": {
+        "node": ">=18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/nodemailer": {
+      "version": "10.2.1",
+      "resolved": "https://registry.npmjs.org/nodemailer/-/nodemailer-10.2.1.tgz",
+      "integrity": "sha512-ZrDNsPFoDMwefNs7sJwrYiEJ/CG4ClJWDZv05iNJsEBWa8GRDry1QJHTJxsuTAY9eDDKjX4k+q3SxslXJOao7w==",
+      "license": "MIT-0",
+      "engines": {
+        "node": ">=20.0.0"
+      }
+    },
+    "node_modules/object-assign": {
+      "version": "4.1.1",
+      "resolved": "https://registry.npmjs.org/object-assign/-/object-assign-4.1.1.tgz",
+      "integrity": "sha512-rJgTQnkUnH1sFw8yT6VSU3zD3sWmu6sZhIseY8VX+GRu3P6F7Fu+JNDoXfklElbLJSnc3FUQHVe4cU5hj+BcUg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=0.10.0"
+      }
+    },
+    "node_modules/object-inspect": {
+      "version": "1.13.4",
+      "resolved": "https://registry.npmjs.org/object-inspect/-/object-inspect-1.13.4.tgz",
+      "integrity": "sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/on-finished": {
+      "version": "2.4.2",
+      "resolved": "https://registry.npmjs.org/on-finished/-/on-finished-2.4.2.tgz",
+      "integrity": "sha512-ATWUv387i+nLD49EiDoOft5scf32Vsdz3ktrQJG9bi7jRFmaXTssvyvj1EmeKVVgvesbqUtvQQvaS2TpTukAZQ==",
+      "license": "MIT",
+      "dependencies": {
+        "ee-first": "1.1.1"
+      },
+      "engines": {
+        "node": ">= 0.8"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/once": {
+      "version": "1.4.0",
+      "resolved": "https://registry.npmjs.org/once/-/once-1.4.0.tgz",
+      "integrity": "sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==",
+      "license": "ISC",
+      "dependencies": {
+        "wrappy": "1"
+      }
+    },
+    "node_modules/parseurl": {
+      "version": "1.3.3",
+      "resolved": "https://registry.npmjs.org/parseurl/-/parseurl-1.3.3.tgz",
+      "integrity": "sha512-CiyeOxFT/JZyN5m0z9PfXw4SCBJ6Sygz1Dpl0wqjlhDEGGBP1GnsUVEL0p63hoG1fcj3fHynXi9NYO4nWOL+qQ==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/path-to-regexp": {
+      "version": "8.4.2",
+      "resolved": "https://registry.npmjs.org/path-to-regexp/-/path-to-regexp-8.4.2.tgz",
+      "integrity": "sha512-qRcuIdP69NPm4qbACK+aDogI5CBDMi1jKe0ry5rSQJz8JVLsC7jV8XpiJjGRLLol3N+R5ihGYcrPLTno6pAdBA==",
+      "license": "MIT",
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/proxy-addr": {
+      "version": "2.0.8",
+      "resolved": "https://registry.npmjs.org/proxy-addr/-/proxy-addr-2.0.8.tgz",
+      "integrity": "sha512-5nnx0yGyVUcY6t9RnWcARWtwT9F1D8O9rt08htPvnd49W1IgZtmLkhu9WfMzQj1cFxjHIO6connUNVW5k7AVyQ==",
+      "license": "MIT",
+      "dependencies": {
+        "forwarded": "0.2.0",
+        "ipaddr.js": "1.9.1"
+      },
+      "engines": {
+        "node": ">= 0.10"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/punycode": {
+      "version": "2.3.1",
+      "resolved": "https://registry.npmjs.org/punycode/-/punycode-2.3.1.tgz",
+      "integrity": "sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=6"
+      }
+    },
+    "node_modules/qs": {
+      "version": "6.17.0",
+      "resolved": "https://registry.npmjs.org/qs/-/qs-6.17.0.tgz",
+      "integrity": "sha512-5LK5BZ2XDHMvcUJaf0CQ5HL3aVgKbpklvByC7qLSxYkfE8COEEbJg5xCHWCTqzqi0Gs4Jn5Mv5v3R38W6edscA==",
+      "license": "BSD-3-Clause",
+      "dependencies": {
+        "es-define-property": "^1.0.1",
+        "side-channel": "^1.1.1"
+      },
+      "engines": {
+        "node": ">=0.6"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/range-parser": {
+      "version": "1.3.0",
+      "resolved": "https://registry.npmjs.org/range-parser/-/range-parser-1.3.0.tgz",
+      "integrity": "sha512-hek2mFQpPuI4E1BBKrSto+BU3e3x4xuarsbiwr3+lf7p44juvFMV0XFWQAP3xUyqXA4RrXLIoaSUGbSt056ZMw==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.6"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/raw-body": {
+      "version": "3.0.2",
+      "resolved": "https://registry.npmjs.org/raw-body/-/raw-body-3.0.2.tgz",
+      "integrity": "sha512-K5zQjDllxWkf7Z5xJdV0/B0WTNqx6vxG70zJE4N0kBs4LovmEYWJzQGxC9bS9RAKu3bgM40lrd5zoLJ12MQ5BA==",
+      "license": "MIT",
+      "dependencies": {
+        "bytes": "~3.1.2",
+        "http-errors": "~2.0.1",
+        "iconv-lite": "~0.7.0",
+        "unpipe": "~1.0.0"
+      },
+      "engines": {
+        "node": ">= 0.10"
+      }
+    },
+    "node_modules/router": {
+      "version": "2.2.0",
+      "resolved": "https://registry.npmjs.org/router/-/router-2.2.0.tgz",
+      "integrity": "sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ==",
+      "license": "MIT",
+      "dependencies": {
+        "debug": "^4.4.0",
+        "depd": "^2.0.0",
+        "is-promise": "^4.0.0",
+        "parseurl": "^1.3.3",
+        "path-to-regexp": "^8.0.0"
+      },
+      "engines": {
+        "node": ">= 18"
+      }
+    },
+    "node_modules/safe-buffer": {
+      "version": "5.2.1",
+      "resolved": "https://registry.npmjs.org/safe-buffer/-/safe-buffer-5.2.1.tgz",
+      "integrity": "sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ==",
+      "funding": [
+        {
+          "type": "github",
+          "url": "https://github.com/sponsors/feross"
+        },
+        {
+          "type": "patreon",
+          "url": "https://www.patreon.com/feross"
+        },
+        {
+          "type": "consulting",
+          "url": "https://feross.org/support"
+        }
+      ],
+      "license": "MIT"
+    },
+    "node_modules/safer-buffer": {
+      "version": "2.1.2",
+      "resolved": "https://registry.npmjs.org/safer-buffer/-/safer-buffer-2.1.2.tgz",
+      "integrity": "sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==",
+      "license": "MIT"
+    },
+    "node_modules/semver": {
+      "version": "7.8.5",
+      "resolved": "https://registry.npmjs.org/semver/-/semver-7.8.5.tgz",
+      "integrity": "sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==",
+      "license": "ISC",
+      "bin": {
+        "semver": "bin/semver.js"
+      },
+      "engines": {
+        "node": ">=10"
+      }
+    },
+    "node_modules/send": {
+      "version": "1.2.1",
+      "resolved": "https://registry.npmjs.org/send/-/send-1.2.1.tgz",
+      "integrity": "sha512-1gnZf7DFcoIcajTjTwjwuDjzuz4PPcY2StKPlsGAQ1+YH20IRVrBaXSWmdjowTJ6u8Rc01PoYOGHXfP1mYcZNQ==",
+      "license": "MIT",
+      "dependencies": {
+        "debug": "^4.4.3",
+        "encodeurl": "^2.0.0",
+        "escape-html": "^1.0.3",
+        "etag": "^1.8.1",
+        "fresh": "^2.0.0",
+        "http-errors": "^2.0.1",
+        "mime-types": "^3.0.2",
+        "ms": "^2.1.3",
+        "on-finished": "^2.4.1",
+        "range-parser": "^1.2.1",
+        "statuses": "^2.0.2"
+      },
+      "engines": {
+        "node": ">= 18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/serve-static": {
+      "version": "2.2.1",
+      "resolved": "https://registry.npmjs.org/serve-static/-/serve-static-2.2.1.tgz",
+      "integrity": "sha512-xRXBn0pPqQTVQiC8wyQrKs2MOlX24zQ0POGaj0kultvoOCstBQM5yvOhAVSUwOMjQtTvsPWoNCHfPGwaaQJhTw==",
+      "license": "MIT",
+      "dependencies": {
+        "encodeurl": "^2.0.0",
+        "escape-html": "^1.0.3",
+        "parseurl": "^1.3.3",
+        "send": "^1.2.0"
+      },
+      "engines": {
+        "node": ">= 18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/setprototypeof": {
+      "version": "1.2.0",
+      "resolved": "https://registry.npmjs.org/setprototypeof/-/setprototypeof-1.2.0.tgz",
+      "integrity": "sha512-E5LDX7Wrp85Kil5bhZv46j8jOeboKq5JMmYM3gVGdGH8xFpPWXUMsNrlODCrkoxMEeNi/XZIwuRvY4XNwYMJpw==",
+      "license": "ISC"
+    },
+    "node_modules/side-channel": {
+      "version": "1.1.1",
+      "resolved": "https://registry.npmjs.org/side-channel/-/side-channel-1.1.1.tgz",
+      "integrity": "sha512-6x6dK6zJdpTzF4sQeNYxwtvBzf6Eg4GtlesS94HOvTudUeyK2WXAaIfmDgsyslYrRBeFIlsi54AYsFGUuhmvrQ==",
+      "license": "MIT",
+      "dependencies": {
+        "es-errors": "^1.3.0",
+        "object-inspect": "^1.13.4",
+        "side-channel-list": "^1.0.1",
+        "side-channel-map": "^1.0.1",
+        "side-channel-weakmap": "^1.0.2"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/side-channel-list": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/side-channel-list/-/side-channel-list-1.0.1.tgz",
+      "integrity": "sha512-mjn/0bi/oUURjc5Xl7IaWi/OJJJumuoJFQJfDDyO46+hBWsfaVM65TBHq2eoZBhzl9EchxOijpkbRC8SVBQU0w==",
+      "license": "MIT",
+      "dependencies": {
+        "es-errors": "^1.3.0",
+        "object-inspect": "^1.13.4"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/side-channel-map": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/side-channel-map/-/side-channel-map-1.0.1.tgz",
+      "integrity": "sha512-VCjCNfgMsby3tTdo02nbjtM/ewra6jPHmpThenkTYh8pG9ucZ/1P8So4u4FGBek/BjpOVsDCMoLA/iuBKIFXRA==",
+      "license": "MIT",
+      "dependencies": {
+        "call-bound": "^1.0.2",
+        "es-errors": "^1.3.0",
+        "get-intrinsic": "^1.2.5",
+        "object-inspect": "^1.13.3"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/side-channel-weakmap": {
+      "version": "1.0.2",
+      "resolved": "https://registry.npmjs.org/side-channel-weakmap/-/side-channel-weakmap-1.0.2.tgz",
+      "integrity": "sha512-WPS/HvHQTYnHisLo9McqBHOJk2FkHO/tlpvldyrnem4aeQp4hai3gythswg6p01oSoTl58rcpiFAjF2br2Ak2A==",
+      "license": "MIT",
+      "dependencies": {
+        "call-bound": "^1.0.2",
+        "es-errors": "^1.3.0",
+        "get-intrinsic": "^1.2.5",
+        "object-inspect": "^1.13.3",
+        "side-channel-map": "^1.0.1"
+      },
+      "engines": {
+        "node": ">= 0.4"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/ljharb"
+      }
+    },
+    "node_modules/sift": {
+      "version": "17.1.3",
+      "resolved": "https://registry.npmjs.org/sift/-/sift-17.1.3.tgz",
+      "integrity": "sha512-Rtlj66/b0ICeFzYTuNvX/EF1igRbbnGSvEyT79McoZa/DeGhMyC5pWKOEsZKnpkqtSeovd5FL/bjHWC3CIIvCQ==",
+      "license": "MIT"
+    },
+    "node_modules/sparse-bitfield": {
+      "version": "3.0.3",
+      "resolved": "https://registry.npmjs.org/sparse-bitfield/-/sparse-bitfield-3.0.3.tgz",
+      "integrity": "sha512-kvzhi7vqKTfkh0PZU+2D2PIllw2ymqJKujUcyPMd9Y75Nv4nPbGJZXNhxsgdQab2BmlDct1YnfQCguEvHr7VsQ==",
+      "license": "MIT",
+      "dependencies": {
+        "memory-pager": "^1.0.2"
+      }
+    },
+    "node_modules/statuses": {
+      "version": "2.0.2",
+      "resolved": "https://registry.npmjs.org/statuses/-/statuses-2.0.2.tgz",
+      "integrity": "sha512-DvEy55V3DB7uknRo+4iOGT5fP1slR8wQohVdknigZPMpMstaKJQWhwiYBACJE3Ul2pTnATihhBYnRhZQHGBiRw==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/toidentifier": {
+      "version": "1.0.1",
+      "resolved": "https://registry.npmjs.org/toidentifier/-/toidentifier-1.0.1.tgz",
+      "integrity": "sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=0.6"
+      }
+    },
+    "node_modules/tr46": {
+      "version": "5.1.1",
+      "resolved": "https://registry.npmjs.org/tr46/-/tr46-5.1.1.tgz",
+      "integrity": "sha512-hdF5ZgjTqgAntKkklYw0R03MG2x/bSzTtkxmIRw/sTNV8YXsCJ1tfLAX23lhxhHJlEf3CRCOCGGWw3vI3GaSPw==",
+      "license": "MIT",
+      "dependencies": {
+        "punycode": "^2.3.1"
+      },
+      "engines": {
+        "node": ">=18"
+      }
+    },
+    "node_modules/type-is": {
+      "version": "2.1.0",
+      "resolved": "https://registry.npmjs.org/type-is/-/type-is-2.1.0.tgz",
+      "integrity": "sha512-faYHw0anBbc/kWF3zFTEnxSFOAGUX9GFbOBthvDdLsIlEoWOFOtS0zgCiQYwIskL9iGXZL3kAXD8OoZ4GmMATA==",
+      "license": "MIT",
+      "dependencies": {
+        "content-type": "^2.0.0",
+        "media-typer": "^1.1.0",
+        "mime-types": "^3.0.0"
+      },
+      "engines": {
+        "node": ">= 18"
+      },
+      "funding": {
+        "type": "opencollective",
+        "url": "https://opencollective.com/express"
+      }
+    },
+    "node_modules/unpipe": {
+      "version": "1.0.0",
+      "resolved": "https://registry.npmjs.org/unpipe/-/unpipe-1.0.0.tgz",
+      "integrity": "sha512-pjy2bYhSsufwWlKwPc+l3cN7+wuJlK6uz0YdJEOlQDbl6jo/YlPi4mb8agUkVC8BF7V8NuzeyPNqRksA3hztKQ==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/vary": {
+      "version": "1.1.2",
+      "resolved": "https://registry.npmjs.org/vary/-/vary-1.1.2.tgz",
+      "integrity": "sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==",
+      "license": "MIT",
+      "engines": {
+        "node": ">= 0.8"
+      }
+    },
+    "node_modules/webidl-conversions": {
+      "version": "7.0.0",
+      "resolved": "https://registry.npmjs.org/webidl-conversions/-/webidl-conversions-7.0.0.tgz",
+      "integrity": "sha512-VwddBukDzu71offAQR975unBIGqfKZpM+8ZX6ySk8nYhVoo5CYaZyzt3YBvYtRtO+aoGlqxPg/B87NGVZ/fu6g==",
+      "license": "BSD-2-Clause",
+      "engines": {
+        "node": ">=12"
+      }
+    },
+    "node_modules/whatwg-url": {
+      "version": "14.2.0",
+      "resolved": "https://registry.npmjs.org/whatwg-url/-/whatwg-url-14.2.0.tgz",
+      "integrity": "sha512-De72GdQZzNTUBBChsXueQUnPKDkg/5A5zp7pFDuQAj5UFoENpiACU0wlCvzpAGnTkj++ihpKwKyYewn/XNUbKw==",
+      "license": "MIT",
+      "dependencies": {
+        "tr46": "^5.1.0",
+        "webidl-conversions": "^7.0.0"
+      },
+      "engines": {
+        "node": ">=18"
+      }
+    },
+    "node_modules/wrappy": {
+      "version": "1.0.2",
+      "resolved": "https://registry.npmjs.org/wrappy/-/wrappy-1.0.2.tgz",
+      "integrity": "sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==",
+      "license": "ISC"
+    }
+  }
+}
+
+
+================================================
+DOSYA: Back-End/package.json
+================================================
+{
+  "name": "back-end",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.11.4",
+    "nodemailer": "^10.2.1"
+  }
+}
+
+
+================================================
+DOSYA: Back-End/routes/authRoutes.js
+================================================
+const express = require('express');
+const router = express.Router();
+const authController = require('../controllers/authController');
+
+// POST /api/auth/admin-login
+router.post('/admin-login', authController.adminLogin);
+
+module.exports = router;
+
+================================================
+DOSYA: Back-End/routes/logRoutes.js
+================================================
+const express = require('express');
+const router = express.Router();
+const logController = require('../controllers/logController');
+const authMiddleware = require('../middleware/authMiddleware');
+
+// GET /api/logs -> authMiddleware'den geçerse logController.getLogs çalışır
+router.get('/', authMiddleware, logController.getLogs);
+
+module.exports = router;
+
+================================================
+DOSYA: Back-End/routes/otpRoutes.js
+================================================
+const express = require('express');
+const router = express.Router();
+const otpController = require('../controllers/otpController');
+
+// POST /api/otp/send - Kod gönder
+router.post('/send', otpController.sendOtp);
+
+// POST /api/otp/verify - Kodu doğrula
+router.post('/verify', otpController.verifyOtp);
+
+module.exports = router;
+
+================================================
+DOSYA: Back-End/seedAdmin.js
+================================================
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '8.8.4.4']);
+
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+require('dotenv').config();
+
+const User = require('./models/User');
+
+const seedAdmin = async () => {
+    try {
+        await mongoose.connect(process.env.MONGO_URI);
+        console.log('✓ Veritabanına bağlanıldı.');
+
+        // Admin daha önce eklenmiş mi kontrol et
+        const existingAdmin = await User.findOne({ email: 'admin@biogate.com' });
+        if (existingAdmin) {
+            console.log('ℹ Admin kullanıcısı zaten mevcut (admin@biogate.com).');
+            process.exit();
+        }
+
+        // Şifreyi hashle
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash('admin123', salt);
+
+        // Yeni admin kullanıcısını oluştur
+        const adminUser = new User({
+            fullName: 'Sistem Yöneticisi',
+            email: 'admin@biogate.com',
+            password: hashedPassword,
+            role: 'admin',
+            isActive: true
+        });
+
+        await adminUser.save();
+        console.log('✓ Varsayılan Admin başarıyla oluşturuldu!');
+        console.log('  E-posta : admin@biogate.com');
+        console.log('  Şifre   : admin123');
+
+        process.exit();
+    } catch (error) {
+        console.error('✗ Hata oluştu:', error.message);
+        process.exit(1);
+    }
+};
+
+seedAdmin();
+
+================================================
+DOSYA: Back-End/server.js
+================================================
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '8.8.4.4']);
+
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+require('dotenv').config();
+
+// Rota Tanımları
+const authRoutes = require('./routes/authRoutes');
+const logRoutes = require('./routes/logRoutes');
+const otpRoutes = require('./routes/otpRoutes');
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// API Rotaları
+app.use('/api/auth', authRoutes);
+app.use('/api/logs', logRoutes);
+app.use('/api/otp', otpRoutes);
+
+// Test Endpoint
+app.get('/', (req, res) => {
+    res.json({ message: "BioGate API Sunucusu Aktif!" });
+});
+
+// Veritabanı Bağlantısı ve Sunucu Başlatma
+mongoose.connect(process.env.MONGO_URI)
+    .then(() => {
+        console.log('✓ MongoDB Atlas Bağlantısı Başarılı!');
+        app.listen(PORT, () => {
+            console.log(`✓ BioGate API Sunucusu http://localhost:${PORT} üzerinde çalışıyor.`);
+        });
+    })
+    .catch((err) => {
+        console.error('✗ MongoDB Bağlantı Hatası:', err.message);
+    });
+
+================================================
+DOSYA: Back-End/testMail.js
+================================================
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '8.8.4.4']);
+const mongoose = require('mongoose');
+require('dotenv').config();
+const User = require('./models/User');
+
+async function runTest() {
+    try {
+        await mongoose.connect(process.env.MONGO_URI);
+        
+        // DİKKAT: Aşağıdaki adresi, telefonunda bildirimini görebileceğin GERÇEK bir e-posta ile değiştir!
+        const gercekMail = "ilkimyigitalp00@gmail.com"; 
+        
+        // 1. Veritabanındaki admin kullanıcısının mailini gerçek mailinle güncelliyoruz
+        await User.findOneAndUpdate({ role: 'admin' }, { email: gercekMail.toLowerCase() });
+        console.log(`✓ Admin maili veritabanında güncellendi: ${gercekMail}`);
+
+        // 2. Kendi API'mize sanki arayüzden istek gelmiş gibi mail atma emri veriyoruz
+        console.log('⏳ Mail gönderiliyor, lütfen bekleyin...');
+        const response = await fetch('http://localhost:5001/api/otp/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: gercekMail })
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+            console.log('✅ BAŞARILI! Telefonuna veya mail kutuna bakabilirsin.');
+            console.log('API Yanıtı:', data.message);
+        } else {
+            console.log('❌ BAŞARISIZ:', data.message);
+        }
+        
+        process.exit();
+    } catch (error) {
+        console.error('✗ Kritik Hata:', error);
+        process.exit(1);
+    }
+}
+
+runTest();
+
+================================================
+DOSYA: Front-End/adminAnaSayfa.html
+================================================
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioGate - Admin</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="js/adminGuard.js"></script>
+</head>
+
+<body>
+    <div class="admin-layout">
+
+        <!-- Sol Menü (Sidebar) -->
+        <aside class="sidebar">
+            <div class="brand-logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 22H22L12 2Z" fill="#ffffff" />
+                </svg>
+                <span>BioGate Admin</span>
+            </div>
+            <nav class="nav-menu">
+                <a href="adminAnaSayfa.html" class="nav-item active">Canlı Loglar</a>
+                <a href="kullaniciYonetimi.html" class="nav-item">Kullanıcı Yönetimi</a>
+                <a href="guvenlikAyarlari.html" class="nav-item">Güvenlik Ayarları</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="logout-btn">Çıkış Yap</button>
+            </div>
+        </aside>
+
+        <!-- Ana İçerik Alanı -->
+        <main class="main-content">
+            <header class="top-header">
+                <h2>Sistem Logları & Güvenlik Paneli</h2>
+                <div class="admin-profile">
+                    <span class="status-dot"></span> Sistem Aktif
+                </div>
+            </header>
+
+            <!-- Özet İstatistik Kartları -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Bugün Başarılı Giriş</h3>
+                    <div class="stat-value text-success">42</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Hatalı OTP Denemesi</h3>
+                    <div class="stat-value text-warning">3</div>
+                </div>
+                <div class="stat-card alert-card">
+                    <h3>Sahte Yüz (Spoofing)</h3>
+                    <div class="stat-value text-danger">1</div>
+                    <p class="stat-desc">Kritik İhlal!</p>
+                </div>
+            </div>
+
+            <!-- Log Tablosu -->
+            <div class="table-container">
+                <div class="table-header">
+                    <h3>Son Giriş Hareketleri</h3>
+                    <button class="refresh-btn">Yenile</button>
+                </div>
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th>Tarih / Saat</th>
+                            <th>Kullanıcı Adı</th>
+                            <th>Olay Türü</th>
+                            <th>Durum</th>
+                            <th>Kanıt Görüntüsü</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log-table-body">
+                        <!-- Örnek Başarılı Log -->
+                        <tr>
+                            <td>24 Ekim 2026, 15:42</td>
+                            <td>Abdül Kerem Varlı</td>
+                            <td>Yüz + OTP Doğrulama</td>
+                            <td><span class="badge badge-success">Başarılı Giriş</span></td>
+                            <td>-</td>
+                        </tr>
+                        <!-- Örnek Hatalı OTP Logu -->
+                        <tr>
+                            <td>24 Ekim 2026, 14:15</td>
+                            <td>Bekir (ID: 02)</td>
+                            <td>OTP Zaman Aşımı</td>
+                            <td><span class="badge badge-warning">Hatalı Şifre</span></td>
+                            <td>-</td>
+                        </tr>
+                        <!-- Örnek Kritik İhlal Logu -->
+                        <tr>
+                            <td>24 Ekim 2026, 10:05</td>
+                            <td>Bilinmiyor</td>
+                            <td>Canlılık Tespiti Başarısız</td>
+                            <td><span class="badge badge-danger">Sahte Yüz (Fotoğraf)</span></td>
+                            <td><a href="#" class="view-image-link">Görüntüyü İncele</a></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+    <script src="js/adminPanel.js"></script>
+</body>
+
+</html>
+
+================================================
+DOSYA: Front-End/adminGiris.html
+================================================
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioKilit - Yönetici Girişi</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="login-body">
+    
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="brand-logo justify-center">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L2 22H22L12 2Z" fill="#ffffff"/>
+                    </svg>
+                    <span>BioGate Admin</span>
+                </div>
+                <p class="login-subtitle">Yönetim paneline erişmek için giriş yapın</p>
+            </div>
+
+            <form id="admin-login-form" class="admin-form vertical-form">
+                <div class="form-group">
+                    <label>E-Posta Adresi</label>
+                    <input type="email" id="admin-email" placeholder="admin@biokilit.com" required autofocus>
+                </div>
+                
+                <div class="form-group">
+                    <label>Şifre</label>
+                    <input type="password" id="admin-password" placeholder="••••••••" required>
+                </div>
+
+                <div class="login-options">
+                    <label class="remember-me">
+                        <input type="checkbox">
+                        <span>Beni Hatırla</span>
+                    </label>
+                    <a href="#" class="forgot-password">Şifremi Unuttum</a>
+                </div>
+
+                <button type="submit" class="btn-primary mt-16 login-btn" id="login-btn">Sisteme Giriş Yap</button>
+                
+                <!-- Yeni Eklenen Geri Dönüş Butonu -->
+                <button type="button" class="btn-secondary back-btn" onclick="window.location.href='anaSayfa.html'">Ana Sayfaya Dön</button>
+                
+                <!-- Hata/Başarı Mesajı Alanı -->
+                <div id="login-message" style="text-align: center; margin-top: 15px; font-size: 0.9rem; font-weight: 500;"></div>
+
+            </form>
+        </div>
+        
+        <div class="login-footer">
+            <p>Sistem yetkisiz erişimleri kayıt altına almaktadır.</p>
+        </div>
+    </div>
+
+    <!-- Giriş kontrolünü yapacak olan JS dosyamız -->
+    <script type="module" src="js/adminAuth.js"></script>
+</body>
+</html>
+
+================================================
+DOSYA: Front-End/anaSayfa.html
+================================================
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioGate</title>
+    <link rel="stylesheet" href="css/anaSayfa.css">
+    <!-- Daha modern bir font için Google Fonts (Inter) ekliyoruz -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="split-layout">
+
+        <!-- SOL PANEL: Form Alanı -->
+        <div class="left-panel">
+            <div class="form-wrapper">
+                <!-- Logo Alanı -->
+                <div class="brand-logo" id="secret-admin-trigger" style="cursor: default; user-select: none;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L2 22H22L12 2Z" fill="#111827" />
+                    </svg>
+                    <span>BioGate</span>
+                </div>
+
+                <h1>Kimlik Doğrulama</h1>
+                <p class="subtitle">Yüzünüz doğrulandı. Lütfen cihazınıza gelen 6 haneli şifreyi giriniz.</p>
+
+                <div class="input-group">
+                    <label>Tek Kullanımlık Şifre (OTP)</label>
+                    <div class="otp-inputs" id="otp-container">
+                        <input type="text" maxlength="1" autofocus>
+                        <input type="text" maxlength="1" disabled>
+                        <input type="text" maxlength="1" disabled>
+                        <input type="text" maxlength="1" disabled>
+                        <input type="text" maxlength="1" disabled>
+                        <input type="text" maxlength="1" disabled>
+                    </div>
+                </div>
+
+                <button id="submit-btn" class="submit-btn">Doğrula ve Giriş Yap</button>
+                <div class="status-message" id="status-message"></div>
+
+                <div class="footer-links">
+                    <p>Sorun mu yaşıyorsunuz? <a target="_blank" href="https://www.instagram.com/ilkimyigitalpp/">IT Destek ile İletişime Geçin</a></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SAĞ PANEL: Kurumsal Bilgi (Görseldeki koyu alan) -->
+        <div class="right-panel">
+            <div class="dark-card">
+                <div class="dark-content">
+                    <h2 class="dark-title">BioGate</h2>
+                    <h3 class="dark-heading">Güvenli Alanlara<br>Hoş Geldiniz</h3>
+                    <p class="dark-text">
+                        Bu sistem, tesis güvenliğini maksimize etmek amacıyla çift aşamalı biyometrik ve dijital
+                        doğrulama kullanmaktadır. Geçişler kayıt altına alınmaktadır.
+                    </p>
+
+                    <!-- Görseldeki alt gri bilgi kartı detayı -->
+                    <div class="info-box">
+                        <h4>İzinsiz geçişler hakkında</h4>
+                        <p>Yetkisiz denemeler anlık olarak güvenlik birimine fotoğraflı olarak raporlanmaktadır.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- JS dosyalarımız aynı kalıyor -->
+    <script type="module" src="js/app.js"></script>
+
+</body>
+
+</html>
+
+================================================
+DOSYA: Front-End/css/admin.css
+================================================
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #050505; /* Çok koyu bir arka plan */
+    color: #e5e7eb;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.admin-layout {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* --- SOL MENÜ (Sidebar) --- */
+.sidebar {
+    width: 260px;
+    background-color: #0f0f11;
+    border-right: 1px solid #27272a;
+    display: flex;
+    flex-direction: column;
+    padding: 24px 0;
+}
+
+.brand-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 24px;
+    margin-bottom: 40px;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.nav-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 16px;
+    flex: 1;
+}
+
+.nav-item {
+    padding: 12px 16px;
+    border-radius: 8px;
+    text-decoration: none;
+    color: #9ca3af;
+    font-weight: 500;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+}
+
+.nav-item:hover, .nav-item.active {
+    background-color: #27272a;
+    color: #ffffff;
+}
+
+.sidebar-footer {
+    padding: 0 24px;
+}
+
+.logout-btn {
+    width: 100%;
+    padding: 12px;
+    background-color: transparent;
+    border: 1px solid #3f3f46;
+    color: #e5e7eb;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: 0.2s;
+}
+
+.logout-btn:hover {
+    background-color: #3f3f46;
+}
+
+/* --- ANA İÇERİK --- */
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 32px 40px;
+    overflow-y: auto;
+}
+
+.top-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 40px;
+}
+
+.top-header h2 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.admin-profile {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    background-color: #10b981;
+    border-radius: 50%;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+}
+
+/* --- KARTLAR --- */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin-bottom: 40px;
+}
+
+.stat-card {
+    background-color: #0f0f11;
+    border: 1px solid #27272a;
+    border-radius: 16px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+}
+
+.stat-card h3 {
+    font-size: 0.9rem;
+    color: #9ca3af;
+    margin-bottom: 12px;
+    font-weight: 500;
+}
+
+.stat-value {
+    font-size: 2.5rem;
+    font-weight: 700;
+}
+
+.text-success { color: #10b981; }
+.text-warning { color: #f59e0b; }
+.text-danger { color: #ef4444; }
+
+.alert-card {
+    border-color: rgba(239, 68, 68, 0.3);
+    background-color: rgba(239, 68, 68, 0.05);
+}
+
+.stat-desc {
+    margin-top: 8px;
+    font-size: 0.85rem;
+    color: #ef4444;
+    font-weight: 600;
+}
+
+/* --- TABLO --- */
+.table-container {
+    background-color: #0f0f11;
+    border: 1px solid #27272a;
+    border-radius: 16px;
+    padding: 24px;
+    flex: 1;
+}
+
+.table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.refresh-btn {
+    background-color: #ffffff;
+    color: #000000;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.log-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.log-table th {
+    text-align: left;
+    padding: 16px;
+    color: #9ca3af;
+    font-weight: 500;
+    font-size: 0.9rem;
+    border-bottom: 1px solid #27272a;
+}
+
+.log-table td {
+    padding: 16px;
+    font-size: 0.95rem;
+    border-bottom: 1px solid #1f1f22;
+}
+
+.badge {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.badge-success { background-color: rgba(16, 185, 129, 0.1); color: #10b981; }
+.badge-warning { background-color: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.badge-danger { background-color: rgba(239, 68, 68, 0.1); color: #ef4444; }
+
+.view-image-link {
+    color: #3b82f6;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+.view-image-link:hover { text-decoration: underline; }
+
+.mb-24 { margin-bottom: 24px; }
+.mt-16 { margin-top: 16px; }
+
+.admin-card {
+    background-color: #0f0f11;
+    border: 1px solid #27272a;
+    border-radius: 16px;
+    padding: 24px;
+}
+
+.card-title {
+    font-size: 1.1rem;
+    color: #ffffff;
+    margin-bottom: 20px;
+    font-weight: 600;
+}
+
+.admin-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.form-row {
+    display: flex;
+    gap: 20px;
+}
+
+.vertical-form .form-group {
+    width: 100%;
+    margin-bottom: 16px;
+}
+
+.form-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-group label {
+    font-size: 0.85rem;
+    color: #9ca3af;
+    font-weight: 500;
+}
+
+.form-group input, .form-group select {
+    background-color: #18181b;
+    border: 1px solid #3f3f46;
+    color: #ffffff;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+    font-family: 'Inter', sans-serif;
+}
+
+.form-group input:focus, .form-group select:focus {
+    border-color: #3b82f6;
+}
+
+.help-text {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-top: 4px;
+}
+
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.btn-primary {
+    background-color: #ffffff;
+    color: #000000;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.btn-primary:hover { background-color: #e5e7eb; }
+
+.btn-secondary {
+    background-color: transparent;
+    border: 1px solid #3f3f46;
+    color: #ffffff;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.btn-secondary:hover { background-color: #27272a; }
+
+.action-btn {
+    background: none;
+    border: none;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    margin-right: 12px;
+}
+
+.action-btn:hover { text-decoration: underline; }
+
+/* Güvenlik Ayarları Izgarası */
+.settings-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 24px;
+}
+
+.alert-bg {
+    background-color: rgba(239, 68, 68, 0.05);
+    border-color: rgba(239, 68, 68, 0.2);
+}
+
+.lockdown-desc {
+    font-size: 0.9rem;
+    color: #9ca3af;
+    line-height: 1.6;
+    margin-bottom: 24px;
+}
+
+.btn-danger {
+    background-color: #ef4444;
+    color: #ffffff;
+    border: none;
+    padding: 16px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 1rem;
+    width: 100%;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-danger:hover { background-color: #dc2626; }
+
+/* --- ADMİN GİRİŞ SAYFASI ÖZEL STİLLERİ --- */
+body.login-body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    background-color: #050505;
+    background-image: radial-gradient(circle at 50% 0%, #1f1f22 0%, #050505 70%);
+}
+
+.login-container {
+    width: 100%;
+    max-width: 420px;
+    padding: 20px;
+}
+
+.login-card {
+    background-color: #0f0f11;
+    border: 1px solid #27272a;
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.brand-logo.justify-center {
+    justify-content: center;
+    margin-bottom: 12px;
+    padding: 0;
+    font-size: 1.4rem;
+}
+
+.login-subtitle {
+    font-size: 0.9rem;
+    color: #9ca3af;
+}
+
+/* Giriş Formu Detayları */
+.login-options {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: -4px;
+    margin-bottom: 12px;
+    font-size: 0.85rem;
+}
+
+.remember-me {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #9ca3af;
+    cursor: pointer;
+}
+
+.remember-me input {
+    accent-color: #3b82f6;
+    cursor: pointer;
+}
+
+.forgot-password {
+    color: #3b82f6;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.forgot-password:hover {
+    text-decoration: underline;
+}
+
+.login-btn {
+    width: 100%;
+    padding: 14px;
+    font-size: 1rem;
+    margin-top: 16px;
+}
+
+.login-footer {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 0.8rem;
+    color: #4b5563;
+}
+
+.back-btn {
+    width: 100%;
+    padding: 14px;
+    font-size: 0.95rem;
+    margin-top: 12px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+================================================
+DOSYA: Front-End/css/anaSayfa.css
+================================================
+/* Temel Ayarlar */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f4f5f7; /* Görseldeki sol tarafın açık gri tonu */
+    color: #111827;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Bölünmüş Ekran Düzeni */
+.split-layout {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* --- SOL PANEL (Form) --- */
+.left-panel {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+}
+
+.form-wrapper {
+    width: 100%;
+    max-width: 400px;
+}
+
+.brand-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 40px;
+    font-weight: 700;
+    font-size: 1.2rem;
+}
+
+h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.subtitle {
+    font-size: 0.9rem;
+    color: #6b7280;
+    margin-bottom: 32px;
+    line-height: 1.5;
+}
+
+.input-group label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+/* Minimalist OTP Kutucukları */
+.otp-inputs {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 24px;
+}
+
+.otp-inputs input {
+    width: 50px;
+    height: 56px;
+    font-size: 24px;
+    text-align: center;
+    background-color: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    color: #111827;
+    outline: none;
+    transition: all 0.2s ease;
+    font-family: 'Inter', sans-serif;
+}
+
+.otp-inputs input:focus {
+    border-color: #111827;
+    box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.1);
+}
+
+.otp-inputs input:disabled {
+    background-color: #f3f4f6;
+    color: #9ca3af;
+}
+
+/* Görseldeki siyah tok buton stili */
+.submit-btn {
+    width: 100%;
+    background-color: #1a1a1a; /* Görseldeki koyu renk */
+    color: white;
+    border: none;
+    padding: 14px 0;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    margin-bottom: 16px;
+}
+
+.submit-btn:hover {
+    background-color: #000000;
+}
+
+.submit-btn:disabled {
+    background-color: #9ca3af;
+    cursor: not-allowed;
+}
+
+.footer-links {
+    margin-top: 24px;
+    text-align: center;
+    font-size: 0.85rem;
+    color: #6b7280;
+}
+
+.footer-links a {
+    color: #111827;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.status-message {
+    margin-top: 12px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-align: center;
+    min-height: 20px;
+}
+
+.status-message.success { color: #059669; }
+.status-message.error { color: #dc2626; }
+
+/* --- SAĞ PANEL (Koyu Kurumsal Alan) --- */
+.right-panel {
+    flex: 1.2;
+    padding: 24px;
+    display: flex;
+}
+
+.dark-card {
+    background-color: #0f0f11;
+    border-radius: 32px;
+    width: 100%;
+    height: 100%;
+    padding: 60px;
+    color: #ffffff;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Flex yapısını dark-content içine taşıyoruz */
+.dark-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%; /* İçeriği yukarıdan aşağıya tam yayar */
+    align-items: flex-start; /* Tüm öğeleri kusursuz sola hizalar */
+}
+
+.dark-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 80px;
+    width: 100%;
+}
+
+.dark-heading {
+    font-size: 2.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 20px;
+    width: 100%;
+}
+
+.dark-text {
+    font-size: 1rem;
+    color: #9ca3af;
+    line-height: 1.6;
+    max-width: 80%;
+}
+
+/* Bilgi Kartı */
+.info-box {
+    background-color: #27272a; 
+    padding: 30px;
+    border-radius: 20px;
+    max-width: 400px;
+    margin-top: auto; /* Flex container sayesinde diğer içeriklerden ayrılıp en alta yapışır */
+    margin-left: 0; /* Sol hizalamayı sıfırlar */
+    width: 100%;
+}
+
+.info-box h4 {
+    font-size: 1.1rem;
+    margin-bottom: 10px;
+}
+
+.info-box p {
+    font-size: 0.9rem;
+    color: #a1a1aa;
+    line-height: 1.5;
+}
+
+/* Mobil Uyumluluk */
+@media (max-width: 900px) {
+    .split-layout {
+        flex-direction: column;
+    }
+    .right-panel {
+        display: none; /* Mobilde sadece formu göster */
+    }
+    .left-panel {
+        padding: 1rem;
+    }
+}
+
+================================================
+DOSYA: Front-End/guvenlikAyarlari.html
+================================================
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioGate - Güvenlik Ayarları</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="js/adminGuard.js"></script>
+</head>
+
+<body>
+    <div class="admin-layout">
+        <!-- Sol Menü -->
+        <aside class="sidebar">
+            <div class="brand-logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 22H22L12 2Z" fill="#ffffff" />
+                </svg>
+                <span>BioGate Admin</span>
+            </div>
+            <nav class="nav-menu">
+                <a href="adminAnaSayfa.html" class="nav-item">Canlı Loglar</a>
+                <a href="kullaniciYonetimi.html" class="nav-item">Kullanıcı Yönetimi</a>
+                <a href="guvenlikAyarlari.html" class="nav-item active">Güvenlik Ayarları</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="logout-btn">Çıkış Yap</button>
+            </div>
+        </aside>
+
+        <!-- Ana İçerik -->
+        <main class="main-content">
+            <header class="top-header">
+                <h2>Güvenlik Ayarları</h2>
+            </header>
+
+            <div class="settings-grid">
+                <!-- Sistem Konfigürasyonu -->
+                <div class="admin-card">
+                    <h3 class="card-title">Sistem Konfigürasyonu</h3>
+                    <form class="admin-form vertical-form">
+                        <div class="form-group">
+                            <label>OTP Geçerlilik Süresi (Dakika)</label>
+                            <input type="number" value="3" min="1" max="10">
+                            <span class="help-text">Şifrenin girilmesi için tanınan maksimum süre.</span>
+                        </div>
+                        <div class="form-group">
+                            <label>Yüz Tanıma Hassasiyet Eşiği (%)</label>
+                            <input type="number" value="90" min="50" max="99">
+                            <span class="help-text">Önerilen minimum değer: 85 (DeepFace VGG-Face)</span>
+                        </div>
+                        <div class="form-group">
+                            <label>İzinsiz Giriş Bildirim E-Postası</label>
+                            <input type="email" value="security@sirket.com">
+                        </div>
+                        <button type="submit" class="btn-primary mt-16">Ayarları Kaydet</button>
+                    </form>
+                </div>
+
+                <!-- Acil Durum Protokolü -->
+                <div class="admin-card alert-bg">
+                    <h3 class="card-title text-danger">Acil Durum Protokolü (Lockdown)</h3>
+                    <p class="lockdown-desc">Tesis içerisinde yangın, saldırı veya sızıntı durumunda tüm geçişleri
+                        geçici olarak durdurur. Yüzü tanınan yetkili personellerin dahi kapıyı açması engellenir.</p>
+                    <button class="btn-danger">Sistemi Kilitle (Lockdown Başlat)</button>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+
+</html>
+
+================================================
+DOSYA: Front-End/js/adminAuth.js
+================================================
+document.addEventListener('DOMContentLoaded', () => {
+    const loginForm = document.getElementById('admin-login-form');
+    const emailInput = document.getElementById('admin-email');
+    const passwordInput = document.getElementById('admin-password');
+    const loginMessage = document.getElementById('login-message');
+    const loginBtn = document.getElementById('login-btn');
+
+    loginForm.addEventListener('submit', async (e) => {
+        // Formun sayfayı yenilemesini engelliyoruz
+        e.preventDefault();
+
+        const email = emailInput.value.trim();
+        const password = passwordInput.value.trim();
+
+        // Butonu "Bekleniyor" moduna al
+        loginBtn.textContent = "Doğrulanıyor...";
+        loginBtn.disabled = true;
+        loginMessage.textContent = "";
+
+        try {
+            // Backend API'mize gerçek bir POST isteği atıyoruz
+            const response = await fetch('http://127.0.0.1:5001/api/auth/admin-login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email, password })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Şifre doğruysa ve JWT Token geldiyse
+                loginMessage.style.color = "#10b981"; // Yeşil
+                loginMessage.textContent = "Giriş başarılı, yönlendiriliyorsunuz...";
+
+                // Güvenlik anahtarını (token) ve kullanıcı bilgisini tarayıcıya kaydet
+                localStorage.setItem('adminToken', data.token);
+                localStorage.setItem('adminUser', JSON.stringify(data.user));
+
+                // Yarım saniye sonra asıl panele yönlendir
+                setTimeout(() => {
+                    window.location.href = "adminAnaSayfa.html";
+                }, 500);
+
+            } else {
+                // Backend'den hata döndüyse (Yanlış şifre vb.)
+                loginMessage.style.color = "#ef4444"; // Kırmızı
+                loginMessage.textContent = data.message || "Hatalı e-posta veya şifre!";
+
+                // Butonu eski haline getir
+                loginBtn.textContent = "Sisteme Giriş Yap";
+                loginBtn.disabled = false;
+                passwordInput.value = ""; // Şifre kutusunu temizle
+                passwordInput.focus();
+            }
+        } catch (error) {
+            console.error('Bağlantı Hatası:', error);
+            loginMessage.style.color = "#ef4444";
+            loginMessage.textContent = "Sunucuya bağlanılamadı. Node.js sunucusunu başlattığınızdan emin olun.";
+
+            loginBtn.textContent = "Sisteme Giriş Yap";
+            loginBtn.disabled = false;
+        }
+    });
+});
+
+================================================
+DOSYA: Front-End/js/adminGuard.js
+================================================
+// 1. AŞAMA: Sayfa yüklenmeden (UI görünmeden) hemen token kontrolü yap (Flicker engelleme)
+const token = localStorage.getItem('adminToken');
+
+if (!token) {
+    // Token yoksa içeriği göstermeden anında kapı dışarı et
+    window.location.replace('adminGiris.html');
+}
+
+// 2. AŞAMA: Sayfa yüklendikten sonra çıkış yapma (Logout) işlemlerini merkeze bağla
+document.addEventListener('DOMContentLoaded', () => {
+    const logoutBtns = document.querySelectorAll('.logout-btn');
+    
+    logoutBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            
+            // Tarayıcıdaki anahtarları yok et
+            localStorage.removeItem('adminToken');
+            localStorage.removeItem('adminUser');
+            
+            // Güvenli bir şekilde ana sayfaya yönlendir
+            window.location.replace('anaSayfa.html');
+        });
+    });
+});
+
+================================================
+DOSYA: Front-End/js/adminPanel.js
+================================================
+document.addEventListener('DOMContentLoaded', () => {
+    // Sayfa açıldığında logları çek
+    fetchLogs();
+
+    // 'Yenile' butonuna basıldığında logları tekrar çek
+    const refreshBtn = document.querySelector('.refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', fetchLogs);
+    }
+});
+
+async function fetchLogs() {
+    const tableBody = document.getElementById('log-table-body');
+    const token = localStorage.getItem('adminToken');
+
+    if (!token) return;
+
+    // Yükleniyor mesajı
+    tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Loglar yükleniyor...</td></tr>';
+
+    try {
+        // Port 5001 üzerinden, JWT Token ile güvenli istek atıyoruz
+        const response = await fetch('http://localhost:5001/api/logs', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            renderLogs(data.data);
+        } else {
+            tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #ef4444;">${data.message}</td></tr>`;
+        }
+    } catch (error) {
+        console.error('Bağlantı hatası:', error);
+        tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #ef4444;">Sunucuya bağlanılamadı. Node.js sunucusunu kontrol edin.</td></tr>';
+    }
+}
+
+function renderLogs(logs) {
+    const tableBody = document.getElementById('log-table-body');
+    tableBody.innerHTML = ''; // Eski statik verileri tamamen temizle
+
+    if (logs.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #9ca3af;">Henüz sistemde hiç kayıtlı log bulunmuyor.</td></tr>';
+        return;
+    }
+
+    // Gelen her bir log için tabloya yeni bir satır ekle
+    logs.forEach(log => {
+        // Duruma göre rozet rengini belirle
+        let badgeClass = 'badge-success';
+        if (log.status === 'warning') badgeClass = 'badge-warning';
+        if (log.status === 'danger') badgeClass = 'badge-danger';
+
+        // Tarih ve saati Türkçe formatta ayarla
+        const dateObj = new Date(log.createdAt);
+        const dateStr = dateObj.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
+        const timeStr = dateObj.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+
+        // Kanıt görüntüsü varsa link koy, yoksa '-' koy
+        const evidenceHtml = log.evidenceImage 
+            ? `<a href="${log.evidenceImage}" class="view-image-link" target="_blank">Görüntüyü İncele</a>` 
+            : '-';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${dateStr}, ${timeStr}</td>
+            <td>${log.userName || 'Bilinmiyor'}</td>
+            <td>${log.eventType}</td>
+            <td><span class="badge ${badgeClass}">${log.statusText}</span></td>
+            <td>${evidenceHtml}</td>
+        `;
+        
+        tableBody.appendChild(tr);
+    });
+}
+
+================================================
+DOSYA: Front-End/js/apiService.js
+================================================
+export class ApiService {
+    constructor(baseUrl = '') {
+        this.baseUrl = baseUrl;
+    }
+
+    async verifyOTP(otpCode) {
+        // İleride gerçek backend isteği buraya gelecek:
+        // const response = await fetch(`${this.baseUrl}/api/verify`, { ... });
+        
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                // Şimdilik simülasyon (Backend gelene kadar)
+                const isSuccess = (otpCode === "123456"); 
+                resolve({ success: isSuccess });
+            }, 1000);
+        });
+    }
+}
+
+================================================
+DOSYA: Front-End/js/app.js
+================================================
+import { ApiService } from './apiService.js';
+import { UIManager } from './uiManager.js';
+
+class App {
+    constructor() {
+        this.api = new ApiService();
+        this.ui = new UIManager();
+        
+        // Gizli admin girişi için sayaç değişkenleri
+        this.secretClickCount = 0;
+        this.secretClickTimer = null;
+
+        this.bindEvents();
+        this.setupSecretAdminLogin();
+    }
+
+    bindEvents() {
+        this.ui.submitBtn.addEventListener('click', () => this.handleVerification());
+    }
+
+    // 5 Tıklama Mantığını Kuran Fonksiyon
+    setupSecretAdminLogin() {
+        const logoTrigger = document.getElementById('secret-admin-trigger');
+        
+        if (logoTrigger) {
+            logoTrigger.addEventListener('click', () => {
+                this.secretClickCount++;
+                
+                // Önceki zamanlayıcıyı temizle
+                clearTimeout(this.secretClickTimer);
+                
+                // 5 kez tıklandıysa sayfaya yönlendir
+                if (this.secretClickCount >= 5) {
+                    window.location.href = 'adminGiris.html';
+                }
+
+                // Eğer 1.5 saniye içinde yeni bir tıklama gelmezse sayacı sıfırla
+                this.secretClickTimer = setTimeout(() => {
+                    this.secretClickCount = 0;
+                }, 1500);
+            });
+        }
+    }
+
+    async handleVerification() {
+        const otpValue = this.ui.getOTPValue();
+
+        if (otpValue.length !== 6) {
+            this.ui.showError("Lütfen 6 haneli şifreyi eksiksiz giriniz.");
+            return;
+        }
+
+        this.ui.showLoading();
+
+        try {
+            const response = await this.api.verifyOTP(otpValue);
+            
+            if (response.success) {
+                this.ui.showSuccess("✓ Giriş Başarılı! Kapı Açılıyor...");
+            } else {
+                this.ui.showError("✗ Hatalı Şifre. Lütfen tekrar deneyin.");
+            }
+        } catch (error) {
+            this.ui.showError("Sunucu bağlantı hatası oluştu.");
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    new App();
+});
+
+================================================
+DOSYA: Front-End/js/uiManager.js
+================================================
+export class UIManager {
+    constructor() {
+        this.inputs = document.querySelectorAll('.otp-inputs input');
+        this.statusMessage = document.getElementById('status-message');
+        this.submitBtn = document.getElementById('submit-btn');
+        this.setupInputBehaviors();
+    }
+
+    setupInputBehaviors() {
+        this.inputs.forEach((input, index) => {
+            input.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/[^0-9]/g, ''); // Sadece rakam
+                if (e.target.value !== '' && index < this.inputs.length - 1) {
+                    this.inputs[index + 1].disabled = false;
+                    this.inputs[index + 1].focus();
+                }
+            });
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' && e.target.value === '' && index > 0) {
+                    this.inputs[index - 1].focus();
+                    this.inputs[index - 1].value = '';
+                }
+            });
+        });
+    }
+
+    getOTPValue() {
+        let otp = '';
+        this.inputs.forEach(input => otp += input.value);
+        return otp;
+    }
+
+    showLoading() {
+        this.statusMessage.textContent = "Doğrulanıyor...";
+        this.statusMessage.className = "status-message";
+        this.submitBtn.disabled = true;
+    }
+
+    showSuccess(message) {
+        this.statusMessage.textContent = message;
+        this.statusMessage.className = "status-message success";
+        this.submitBtn.disabled = false;
+    }
+
+    showError(message) {
+        this.statusMessage.textContent = message;
+        this.statusMessage.className = "status-message error";
+        this.submitBtn.disabled = false;
+        this.resetInputs();
+    }
+
+    resetInputs() {
+        this.inputs.forEach(input => {
+            input.value = '';
+            input.disabled = true;
+        });
+        this.inputs[0].disabled = false;
+        this.inputs[0].focus();
+    }
+}
+
+================================================
+DOSYA: Front-End/kullaniciYonetimi.html
+================================================
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioGate - Kullanıcı Yönetimi</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="js/adminGuard.js"></script>
+</head>
+
+<body>
+    <div class="admin-layout">
+        <!-- Sol Menü -->
+        <aside class="sidebar">
+            <div class="brand-logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 22H22L12 2Z" fill="#ffffff" />
+                </svg>
+                <span>BioGate Admin</span>
+            </div>
+            <nav class="nav-menu">
+                <a href="adminAnaSayfa.html" class="nav-item">Canlı Loglar</a>
+                <a href="kullaniciYonetimi.html" class="nav-item active">Kullanıcı Yönetimi</a>
+                <a href="guvenlikAyarlari.html" class="nav-item">Güvenlik Ayarları</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="logout-btn">Çıkış Yap</button>
+            </div>
+        </aside>
+
+        <!-- Ana İçerik -->
+        <main class="main-content">
+            <header class="top-header">
+                <h2>Kullanıcı Yönetimi</h2>
+            </header>
+
+            <!-- Yeni Kullanıcı Ekleme Formu -->
+            <div class="admin-card mb-24">
+                <h3 class="card-title">Yeni Yetkili Ekle</h3>
+                <form class="admin-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Ad Soyad</label>
+                            <input type="text" placeholder="Örn: Bekir Yılmaz">
+                        </div>
+                        <div class="form-group">
+                            <label>E-Posta Adresi (OTP Gönderimi İçin)</label>
+                            <input type="email" placeholder="ornek@sirket.com">
+                        </div>
+                        <div class="form-group">
+                            <label>Yetki Rolü</label>
+                            <select>
+                                <option>Standart Geçiş</option>
+                                <option>Sistem Yöneticisi (Admin)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary">Kameradan Yüz Tara</button>
+                        <button type="submit" class="btn-primary">Kullanıcıyı Kaydet</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Kullanıcı Listesi -->
+            <div class="table-container">
+                <div class="table-header">
+                    <h3>Kayıtlı Personel Listesi</h3>
+                </div>
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Ad Soyad</th>
+                            <th>E-Posta</th>
+                            <th>Rol</th>
+                            <th>Durum</th>
+                            <th>İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>#001</td>
+                            <td>Abdül Kerem Varlı</td>
+                            <td>kerem@sirket.com</td>
+                            <td>Sistem Yöneticisi</td>
+                            <td><span class="badge badge-success">Aktif</span></td>
+                            <td>
+                                <button class="action-btn text-warning">Askıya Al</button>
+                                <button class="action-btn text-danger">Sil</button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>#002</td>
+                            <td>Bekir</td>
+                            <td>bekir@sirket.com</td>
+                            <td>Standart Geçiş</td>
+                            <td><span class="badge badge-success">Aktif</span></td>
+                            <td>
+                                <button class="action-btn text-warning">Askıya Al</button>
+                                <button class="action-btn text-danger">Sil</button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+</body>
+
+</html>
+
