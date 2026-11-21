@@ -1,5 +1,5 @@
 const dns = require('dns');
-dns.setServers(['8.8.8.8', '8.8.4.4']);
+dns.setServers(['1.1.1.1', '8.8.8.8']);
 
 const express = require('express');
 const mongoose = require('mongoose');
@@ -24,7 +24,7 @@ const io = new Server(server, {
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Veritabanı Bağlantısı (MongoDB Atlas)
 mongoose.connect(process.env.MONGO_URI)
@@ -44,6 +44,24 @@ app.use('/api/logs', logRoutes);
 app.use('/api/otp', otpRoutes);
 app.use('/api/settings', settingRoutes);
 app.use('/api/users', userRoutes);
+
+// Tarayıcı kamerasından gelen kareyi Python eşleştirme servisine (5002) ileten köprü rota
+app.post('/api/camera/match', async (req, res) => {
+    try {
+        const response = await fetch('http://127.0.0.1:5002/match', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: req.body?.image })
+        });
+        const data = await response.json();
+        return res.status(response.status).json(data);
+    } catch (err) {
+        return res.status(503).json({
+            matched: false,
+            error: 'Python yüz tanıma servisine ulaşılamadı.'
+        });
+    }
+});
 
 // Test Endpoint
 app.get('/', (req, res) => {

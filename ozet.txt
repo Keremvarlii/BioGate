@@ -19,6 +19,9 @@ ozet.txt
 # İşletim sistemi kalıntıları
 .DS_Store
 
+# venv
+Python/venv/
+
 ================================================
 DOSYA: Back-End/.env
 ================================================
@@ -2149,6 +2152,7 @@ router.use(authMiddleware);
 router.get('/', userController.getAllUsers);
 router.post('/', userController.createUser);
 router.put('/:id/toggle-status', userController.toggleUserStatus);
+router.put('/:id/face', userController.updateUserFace);
 router.delete('/:id', userController.deleteUser);
 
 module.exports = router;
@@ -2207,6 +2211,9 @@ seedAdmin();
 ================================================
 DOSYA: Back-End/server.js
 ================================================
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '8.8.4.4']);
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -2435,6 +2442,8 @@ DOSYA: Front-End/adminAnaSayfa.html
             </div>
         </main>
     </div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="js/adminPanel.js"></script>
 </body>
 
@@ -2554,7 +2563,8 @@ DOSYA: Front-End/anaSayfa.html
                 <div class="status-message" id="status-message"></div>
 
                 <div class="footer-links">
-                    <p>Sorun mu yaşıyorsunuz? <a target="_blank" href="https://www.instagram.com/keremmvarli/">IT Destek ile İletişime Geçin</a></p>
+                    <p>Sorun mu yaşıyorsunuz? <a target="_blank" href="https://www.instagram.com/keremmvarli/">IT Destek
+                            ile İletişime Geçin</a></p>
                 </div>
             </div>
         </div>
@@ -2581,19 +2591,19 @@ DOSYA: Front-End/anaSayfa.html
 
     </div>
 
+    <!-- Socket.io İstemci Kütüphanesi -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <!-- JS dosyalarımız aynı kalıyor -->
     <script type="module" src="js/app.js"></script>
-    <!-- Socket.io İstemci Kütüphanesi -->
-<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
-<!-- Sunucuya Bağlanma Testi -->
-<script>
-    const socket = io('http://localhost:5001');
-    
-    socket.on('connect', () => {
-        console.log("WebSocket bağlantısı başarılı! Sunucuya bağlandık.");
-    });
-</script>
+    <!-- Sunucuya Bağlanma Testi -->
+    <script>
+        const socket = io('http://localhost:5001');
+
+        socket.on('connect', () => {
+            console.log("WebSocket bağlantısı başarılı! Sunucuya bağlandık.");
+        });
+    </script>
 
 </body>
 
@@ -3504,7 +3514,21 @@ document.addEventListener('DOMContentLoaded', () => {
     if (refreshBtn) {
         refreshBtn.addEventListener('click', fetchLogs);
     }
+
+    // Canlı log güncellemesi için Socket.io dinleyicisi
+    setupAdminSocketListener();
 });
+
+function setupAdminSocketListener() {
+    if (typeof window.io === 'undefined') return;
+
+    const socket = window.socket || window.io('http://localhost:5001');
+    window.socket = socket;
+
+    socket.on('new_log_created', () => {
+        fetchLogs();
+    });
+}
 
 async function fetchLogs() {
     const tableBody = document.getElementById('log-table-body');
@@ -3539,7 +3563,7 @@ async function fetchLogs() {
 
 function renderLogs(logs) {
     const tableBody = document.getElementById('log-table-body');
-    tableBody.innerHTML = ''; 
+    tableBody.innerHTML = '';
 
     if (logs.length === 0) {
         tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #9ca3af;">Henüz sistemde hiç kayıtlı log bulunmuyor.</td></tr>';
@@ -3555,8 +3579,8 @@ function renderLogs(logs) {
         const dateStr = dateObj.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
         const timeStr = dateObj.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
-        const evidenceHtml = log.evidenceImage 
-            ? `<a href="${log.evidenceImage}" class="view-image-link" target="_blank">Görüntüyü İncele</a>` 
+        const evidenceHtml = log.evidenceImage
+            ? `<a href="${log.evidenceImage}" class="view-image-link" target="_blank">Görüntüyü İncele</a>`
             : '-';
 
         const tr = document.createElement('tr');
@@ -3567,12 +3591,12 @@ function renderLogs(logs) {
             <td><span class="badge ${badgeClass}">${log.statusText}</span></td>
             <td>${evidenceHtml}</td>
         `;
-        
+
         tableBody.appendChild(tr);
     });
 }
 
-// YENİ EKLENEN FONKSİYON: İstatistik kartlarını günceller
+// İstatistik kartlarını günceller
 function updateStats(logs) {
     let successCount = 0;
     let warningCount = 0;
@@ -3583,7 +3607,7 @@ function updateStats(logs) {
 
     logs.forEach(log => {
         const logDate = new Date(log.createdAt).setHours(0, 0, 0, 0);
-        
+
         // Sadece bugünün loglarını say
         if (logDate === today) {
             if (log.status === 'success') successCount++;
@@ -3640,15 +3664,31 @@ class App {
         this.secretClickCount = 0;
         this.secretClickTimer = null;
 
-        // GEÇİCİ: Yüz tanıma sistemi gelene kadar test mailimizi "tanınan kişi" olarak sabitliyoruz
-        this.currentRecognizedEmail = "keremvarli1@gmail.com"; 
+        // Yüz tanıma sistemi gelene kadar varsayılan test e-postası
+        this.currentRecognizedEmail = "keremvarli1@gmail.com";
 
         this.bindEvents();
         this.setupSecretAdminLogin();
+        this.setupSocketListener();
     }
 
     bindEvents() {
         this.ui.submitBtn.addEventListener('click', () => this.handleVerification());
+    }
+
+    setupSocketListener() {
+        if (typeof window.io !== 'undefined') {
+            const socket = window.socket || window.io('http://localhost:5001');
+            window.socket = socket;
+
+            socket.on('face_recognized_alert', (data) => {
+                if (data && data.email) {
+                    this.currentRecognizedEmail = data.email;
+                    this.ui.showSuccess(`Yüz doğrulandı (${data.email}). Lütfen 6 haneli OTP kodunu girin.`);
+                    this.ui.resetInputs();
+                }
+            });
+        }
     }
 
     // 5 Tıklama Mantığını Kuran Fonksiyon
@@ -3686,14 +3726,11 @@ class App {
         this.ui.showLoading();
 
         try {
-            // Sadece OTP kodunu değil, "kimin" kodu olduğunu da (email) gönderiyoruz
             const response = await this.api.verifyOTP(this.currentRecognizedEmail, otpValue);
             
             if (response.success) {
-                // Backend'den gelen başarılı mesajını ekrana bas (örn: "Doğrulama başarılı, kapı açılıyor.")
                 this.ui.showSuccess("✓ " + response.message);
             } else {
-                // Backend'den gelen hata mesajını ekrana bas (örn: "Hatalı veya süresi dolmuş kod!")
                 this.ui.showError("✗ " + response.message);
             }
         } catch (error) {
@@ -4187,3 +4224,529 @@ DOSYA: Front-End/kullaniciYonetimi.html
 
 </html>
 
+================================================
+DOSYA: Python/kamera_socket_test.py
+================================================
+import time
+import cv2
+import socketio
+
+sio = socketio.Client()
+
+
+@sio.event
+def connect():
+    print("✓ Node.js Socket.io sunucusuna bağlandı.")
+
+
+@sio.event
+def disconnect():
+    print("✗ Socket.io bağlantısı koptu.")
+
+
+def main():
+    sio.connect("http://localhost:5001")
+    cap = cv2.VideoCapture(0)
+
+    if not cap.isOpened():
+        print("✗ Kamera açılamadı.")
+        sio.disconnect()
+        return
+
+    print("Kamera açıldı. Test sinyali göndermek için 's', çıkmak için 'q' tuşuna bas.")
+    last_emit = 0.0
+
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            cv2.imshow("BioGate Kamera Testi", frame)
+            key = cv2.waitKey(1) & 0xFF
+
+            if key == ord("s") and (time.time() - last_emit) > 2.0:
+                payload = {
+                    "email": "keremvarli1@gmail.com",
+                    "fullName": "Abdül Kerem Varlı",
+                }
+                sio.emit("python_face_detected", payload)
+                print("→ Sinyal gönderildi:", payload)
+                last_emit = time.time()
+
+            elif key == ord("q"):
+                break
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+        sio.disconnect()
+
+
+if __name__ == "__main__":
+    main()
+
+================================================
+DOSYA: Python/yuz_eslestir_servisi.py
+================================================
+import base64
+import math
+import time
+import cv2
+import numpy as np
+import requests
+import socketio
+from deepface import DeepFace
+from flask import Flask, jsonify, request
+
+API_BASE = "http://127.0.0.1:5001"
+SOCKET_URL = "http://localhost:5001"
+ADMIN_EMAIL = "keremvarli1@gmail.com"
+ADMIN_PASS = "admin123"
+THRESHOLD = 0.40
+COOLDOWN_SEC = 5.0
+
+app = Flask(__name__)
+sio = socketio.Client()
+cached_users = []
+last_emit_time = 0.0
+
+
+def cosine_distance(vec_a, vec_b):
+    if not vec_a or not vec_b or len(vec_a) != len(vec_b):
+        return 1.0
+    dot = sum(a * b for a, b in zip(vec_a, vec_b))
+    norm_a = math.sqrt(sum(a * a for a in vec_a))
+    norm_b = math.sqrt(sum(b * b for b in vec_b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 1.0
+    cosine_sim = max(-1.0, min(1.0, dot / (norm_a * norm_b)))
+    return 1.0 - cosine_sim
+
+
+def kullanicilari_yukle():
+    global cached_users
+    login_resp = requests.post(
+        f"{API_BASE}/api/auth/admin-login",
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASS},
+        timeout=10,
+    )
+    login_resp.raise_for_status()
+    token = login_resp.json()["token"]
+
+    users_resp = requests.get(
+        f"{API_BASE}/api/users",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    users_resp.raise_for_status()
+    users = users_resp.json().get("data", [])
+
+    cached_users = [
+        u for u in users
+        if len(u.get("faceDescriptor") or []) > 0
+        and any(abs(x) > 1e-9 for x in u.get("faceDescriptor"))
+    ]
+    print(f"✓ {len(cached_users)} adet kayıtlı yüz profili yüklendi.")
+
+
+def frame_from_base64(data_url):
+    if "," in data_url:
+        _, encoded = data_url.split(",", 1)
+    else:
+        encoded = data_url
+    img_bytes = base64.b64decode(encoded)
+    np_arr = np.frombuffer(img_bytes, np.uint8)
+    return cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+
+@app.route("/match", methods=["POST"])
+def match_face():
+    global last_emit_time
+
+    if not cached_users:
+        try:
+            kullanicilari_yukle()
+        except Exception as e:
+            return jsonify({"matched": False, "error": str(e)}), 500
+
+    body = request.get_json(silent=True) or {}
+    image_b64 = body.get("image")
+    if not image_b64:
+        return jsonify({"matched": False, "error": "Görüntü verisi eksik."}), 400
+
+    frame = frame_from_base64(image_b64)
+    if frame is None:
+        return jsonify({"matched": False, "error": "Görüntü çözümlenemedi."}), 400
+
+    try:
+        reps = DeepFace.represent(
+            img_path=frame,
+            model_name="VGG-Face",
+            enforce_detection=True,
+            detector_backend="opencv",
+        )
+        live_vec = reps[0]["embedding"]
+
+        best_user = None
+        best_dist = 999.0
+        for u in cached_users:
+            dist = cosine_distance(live_vec, u["faceDescriptor"])
+            if dist < best_dist:
+                best_dist = dist
+                best_user = u
+
+        if best_user and best_dist <= THRESHOLD:
+            now = time.time()
+            payload = {
+                "email": best_user["email"],
+                "fullName": best_user["fullName"],
+                "distance": round(best_dist, 4),
+            }
+            if sio.connected and (now - last_emit_time) >= COOLDOWN_SEC:
+                sio.emit("python_face_detected", payload)
+                last_emit_time = now
+
+            return jsonify({
+                "matched": True,
+                "email": best_user["email"],
+                "fullName": best_user["fullName"],
+                "distance": round(best_dist, 4),
+            })
+
+        return jsonify({
+            "matched": False,
+            "distance": round(best_dist, 4) if best_user else None,
+        })
+    except ValueError:
+        return jsonify({"matched": False, "reason": "no_face"})
+    except Exception as e:
+        return jsonify({"matched": False, "error": str(e)}), 500
+
+
+if __name__ == "__main__":
+    kullanicilari_yukle()
+    try:
+        sio.connect(SOCKET_URL)
+        print("✓ Socket.io sunucusuna bağlandı.")
+    except Exception as e:
+        print("• Socket.io ilk bağlantı uyarısı:", e)
+    app.run(host="127.0.0.1", port=5002, debug=False)
+
+================================================
+DOSYA: Python/yuz_kayit.py
+================================================
+import cv2
+import requests
+from deepface import DeepFace
+
+API_BASE = "http://127.0.0.1:5001"
+ADMIN_EMAIL = "keremvarli1@gmail.com"
+ADMIN_PASS = "admin123"
+
+
+def admin_token_al():
+    resp = requests.post(
+        f"{API_BASE}/api/auth/admin-login",
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASS},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    if not data.get("success") or not data.get("token"):
+        raise RuntimeError("Admin token alınamadı: " + str(data))
+    return data["token"]
+
+
+def kullanicilari_getir(token):
+    resp = requests.get(
+        f"{API_BASE}/api/users",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return data.get("data", [])
+
+
+def yuz_vektoru_kaydet(token, user_id, descriptor):
+    resp = requests.put(
+        f"{API_BASE}/api/users/{user_id}/face",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        json={"faceDescriptor": descriptor},
+        timeout=20,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def main():
+    try:
+        token = admin_token_al()
+        users = kullanicilari_getir(token)
+    except Exception as e:
+        print("✗ API bağlantı/yetki hatası:", e)
+        return
+
+    if not users:
+        print("✗ Sistemde kayıtlı kullanıcı bulunamadı. Önce kullanıcı ekleyin.")
+        return
+
+    print("\n--- Kayıtlı Kullanıcılar ---")
+    for idx, u in enumerate(users):
+        vec_len = len(u.get("faceDescriptor") or [])
+        print(f"{idx + 1}. {u.get('fullName')} ({u.get('email')}) [Vektör: {vec_len}]")
+
+    try:
+        secim = int(input("\nYüzü kaydedilecek kullanıcının numarasını gir: ")) - 1
+        if secim < 0 or secim >= len(users):
+            print("✗ Geçersiz seçim.")
+            return
+    except ValueError:
+        print("✗ Lütfen sayı gir.")
+        return
+
+    secili_user = users[secim]
+    user_id = secili_user["_id"]
+    print(f"✓ Seçilen kullanıcı: {secili_user['fullName']} ({secili_user['email']})")
+
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        print("✗ Kamera açılamadı.")
+        return
+
+    print("Kameraya bak. Yüzü kaydedip göndermek için 'c', çıkmak için 'q' tuşuna bas.")
+
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            cv2.imshow("BioGate Yuz Kayit", frame)
+            key = cv2.waitKey(1) & 0xFF
+
+            if key == ord("c"):
+                print("⏳ Yüz vektörü çıkarılıyor...")
+                try:
+                    reps = DeepFace.represent(
+                        img_path=frame,
+                        model_name="VGG-Face",
+                        enforce_detection=True,
+                    )
+                    descriptor = reps[0]["embedding"]
+                    if not any(abs(x) > 1e-9 for x in descriptor):
+                        print("✗ Geçersiz (tamamı sıfır) vektör üretildi, tekrar dene.")
+                        continue
+
+                    sonuc = yuz_vektoru_kaydet(token, user_id, descriptor)
+                    print("✓", sonuc.get("message", "Yüz verisi kaydedildi."))
+                    break
+                except ValueError:
+                    print("✗ Yüz net algılanamadı, kameraya biraz daha yaklaş ve tekrar 'c' bas.")
+                except Exception as e:
+                    print("✗ Kayıt hatası:", e)
+
+            elif key == ord("q"):
+                print("İşlem iptal edildi.")
+                break
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
+
+================================================
+DOSYA: Python/yuz_tani_canli.py
+================================================
+import math
+import time
+import cv2
+import requests
+import socketio
+from deepface import DeepFace
+
+API_BASE = "http://127.0.0.1:5001"
+SOCKET_URL = "http://localhost:5001"
+ADMIN_EMAIL = "keremvarli1@gmail.com"
+ADMIN_PASS = "admin123"
+THRESHOLD = 0.40
+COOLDOWN_SEC = 5.0
+
+
+def cosine_distance(vec_a, vec_b):
+    if not vec_a or not vec_b or len(vec_a) != len(vec_b):
+        return 1.0
+    dot = sum(a * b for a, b in zip(vec_a, vec_b))
+    norm_a = math.sqrt(sum(a * a for a in vec_a))
+    norm_b = math.sqrt(sum(b * b for b in vec_b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 1.0
+    cosine_sim = max(-1.0, min(1.0, dot / (norm_a * norm_b)))
+    return 1.0 - cosine_sim
+
+
+def kayitli_yuzleri_yukle():
+    login_resp = requests.post(
+        f"{API_BASE}/api/auth/admin-login",
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASS},
+        timeout=10,
+    )
+    login_resp.raise_for_status()
+    token = login_resp.json()["token"]
+
+    users_resp = requests.get(
+        f"{API_BASE}/api/users",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    users_resp.raise_for_status()
+    users = users_resp.json().get("data", [])
+
+    valid_users = []
+    for u in users:
+        desc = u.get("faceDescriptor") or []
+        if len(desc) > 0 and any(abs(x) > 1e-9 for x in desc):
+            valid_users.append(u)
+    return valid_users
+
+
+def main():
+    try:
+        users = kayitli_yuzleri_yukle()
+    except Exception as e:
+        print("✗ Kullanıcı yüz verileri alınamadı:", e)
+        return
+
+    if not users:
+        print("✗ Veritabanında kayıtlı yüz vektörü olan kullanıcı yok. Önce yuz_kayit.py çalıştır.")
+        return
+
+    print(f"✓ {len(users)} adet kayıtlı yüz profili yüklendi.")
+
+    sio = socketio.Client()
+    sio.connect(SOCKET_URL)
+
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        print("✗ Kamera açılamadı.")
+        sio.disconnect()
+        return
+
+    print("Canlı yüz tanıma aktif. Çıkmak için 'q' tuşuna bas.")
+    last_check = 0.0
+    last_emit = 0.0
+
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            now = time.time()
+            # İşlemciyi yormamak için ~1.5 saniyede bir yüz taraması yap
+            if now - last_check >= 1.5:
+                last_check = now
+                try:
+                    reps = DeepFace.represent(
+                        img_path=frame,
+                        model_name="VGG-Face",
+                        enforce_detection=True,
+                        detector_backend="opencv",
+                    )
+                    live_vec = reps[0]["embedding"]
+
+                    best_user = None
+                    best_dist = 999.0
+                    for u in users:
+                        dist = cosine_distance(live_vec, u["faceDescriptor"])
+                        if dist < best_dist:
+                            best_dist = dist
+                            best_user = u
+
+                    if best_user and best_dist <= THRESHOLD:
+                        if now - last_emit >= COOLDOWN_SEC:
+                            payload = {
+                                "email": best_user["email"],
+                                "fullName": best_user["fullName"],
+                                "distance": round(best_dist, 4),
+                            }
+                            sio.emit("python_face_detected", payload)
+                            last_emit = now
+                            print(
+                                f"✓ Yüz eşleşti: {best_user['fullName']} "
+                                f"({best_user['email']}) | Mesafe: {best_dist:.3f}"
+                            )
+                    else:
+                        print(f"• Tanınmayan yüz veya eşik üstü mesafe: {best_dist:.3f}")
+                except ValueError:
+                    pass
+                except Exception as e:
+                    print("✗ Analiz hatası:", e)
+
+            cv2.imshow("BioGate Canli Yuz Tanima", frame)
+            if (cv2.waitKey(1) & 0xFF) == ord("q"):
+                break
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+        sio.disconnect()
+
+
+if __name__ == "__main__":
+    main()
+
+================================================
+DOSYA: Python/yuz_vektor_test.py
+================================================
+import cv2
+from deepface import DeepFace
+
+
+def main():
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        print("✗ Kamera açılamadı.")
+        return
+
+    print("Kamera hazır. Yüz vektörü çıkarmak için 'c', çıkmak için 'q' tuşuna bas.")
+
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            cv2.imshow("BioGate Yuz Vektor Testi", frame)
+            key = cv2.waitKey(1) & 0xFF
+
+            if key == ord("c"):
+                print("⏳ Yüz vektörü hesaplanıyor...")
+                try:
+                    embeddings = DeepFace.represent(
+                        img_path=frame,
+                        model_name="VGG-Face",
+                        enforce_detection=True,
+                    )
+                    vec = embeddings[0]["embedding"]
+                    print(f"✓ Vektör çıkarıldı! Boyut: {len(vec)}, İlk 5 değer: {vec[:5]}")
+                except ValueError as e:
+                    print("✗ Yüz algılanamadı veya net değil:", e)
+                except Exception as e:
+                    print("✗ Hata oluştu:", e)
+
+            elif key == ord("q"):
+                break
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
+
+--- SON ---
