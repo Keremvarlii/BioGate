@@ -19,6 +19,7 @@ router.use(authMiddleware);
 router.get('/', userController.getAllUsers);
 router.post('/', userController.createUser);
 router.put('/:id/toggle-status', userController.toggleUserStatus);
+router.put('/:id/face', userController.updateUserFace);
 router.delete('/:id', userController.deleteUser);
 
 module.exports = router;

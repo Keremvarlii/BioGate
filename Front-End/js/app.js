@@ -10,15 +10,31 @@ class App {
         this.secretClickCount = 0;
         this.secretClickTimer = null;
 
-        // GEÇİCİ: Yüz tanıma sistemi gelene kadar test mailimizi "tanınan kişi" olarak sabitliyoruz
-        this.currentRecognizedEmail = "keremvarli1@gmail.com"; 
+        // Yüz tanıma sistemi gelene kadar varsayılan test e-postası
+        this.currentRecognizedEmail = "keremvarli1@gmail.com";
 
         this.bindEvents();
         this.setupSecretAdminLogin();
+        this.setupSocketListener();
     }
 
     bindEvents() {
         this.ui.submitBtn.addEventListener('click', () => this.handleVerification());
+    }
+
+    setupSocketListener() {
+        if (typeof window.io !== 'undefined') {
+            const socket = window.socket || window.io('http://localhost:5001');
+            window.socket = socket;
+
+            socket.on('face_recognized_alert', (data) => {
+                if (data && data.email) {
+                    this.currentRecognizedEmail = data.email;
+                    this.ui.showSuccess(`Yüz doğrulandı (${data.email}). Lütfen 6 haneli OTP kodunu girin.`);
+                    this.ui.resetInputs();
+                }
+            });
+        }
     }
 
     // 5 Tıklama Mantığını Kuran Fonksiyon
@@ -56,14 +72,11 @@ class App {
         this.ui.showLoading();
 
         try {
-            // Sadece OTP kodunu değil, "kimin" kodu olduğunu da (email) gönderiyoruz
             const response = await this.api.verifyOTP(this.currentRecognizedEmail, otpValue);
             
             if (response.success) {
-                // Backend'den gelen başarılı mesajını ekrana bas (örn: "Doğrulama başarılı, kapı açılıyor.")
                 this.ui.showSuccess("✓ " + response.message);
             } else {
-                // Backend'den gelen hata mesajını ekrana bas (örn: "Hatalı veya süresi dolmuş kod!")
                 this.ui.showError("✗ " + response.message);
             }
         } catch (error) {

@@ -7,7 +7,21 @@ document.addEventListener('DOMContentLoaded', () => {
     if (refreshBtn) {
         refreshBtn.addEventListener('click', fetchLogs);
     }
+
+    // Canlı log güncellemesi için Socket.io dinleyicisi
+    setupAdminSocketListener();
 });
+
+function setupAdminSocketListener() {
+    if (typeof window.io === 'undefined') return;
+
+    const socket = window.socket || window.io('http://localhost:5001');
+    window.socket = socket;
+
+    socket.on('new_log_created', () => {
+        fetchLogs();
+    });
+}
 
 async function fetchLogs() {
     const tableBody = document.getElementById('log-table-body');
@@ -42,7 +56,7 @@ async function fetchLogs() {
 
 function renderLogs(logs) {
     const tableBody = document.getElementById('log-table-body');
-    tableBody.innerHTML = ''; 
+    tableBody.innerHTML = '';
 
     if (logs.length === 0) {
         tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #9ca3af;">Henüz sistemde hiç kayıtlı log bulunmuyor.</td></tr>';
@@ -58,8 +72,8 @@ function renderLogs(logs) {
         const dateStr = dateObj.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
         const timeStr = dateObj.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
-        const evidenceHtml = log.evidenceImage 
-            ? `<a href="${log.evidenceImage}" class="view-image-link" target="_blank">Görüntüyü İncele</a>` 
+        const evidenceHtml = log.evidenceImage
+            ? `<a href="${log.evidenceImage}" class="view-image-link" target="_blank">Görüntüyü İncele</a>`
             : '-';
 
         const tr = document.createElement('tr');
@@ -70,12 +84,12 @@ function renderLogs(logs) {
             <td><span class="badge ${badgeClass}">${log.statusText}</span></td>
             <td>${evidenceHtml}</td>
         `;
-        
+
         tableBody.appendChild(tr);
     });
 }
 
-// YENİ EKLENEN FONKSİYON: İstatistik kartlarını günceller
+// İstatistik kartlarını günceller
 function updateStats(logs) {
     let successCount = 0;
     let warningCount = 0;
@@ -86,7 +100,7 @@ function updateStats(logs) {
 
     logs.forEach(log => {
         const logDate = new Date(log.createdAt).setHours(0, 0, 0, 0);
-        
+
         // Sadece bugünün loglarını say
         if (logDate === today) {
             if (log.status === 'success') successCount++;

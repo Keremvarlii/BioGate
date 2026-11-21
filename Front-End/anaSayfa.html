@@ -43,7 +43,8 @@
                 <div class="status-message" id="status-message"></div>
 
                 <div class="footer-links">
-                    <p>Sorun mu yaşıyorsunuz? <a target="_blank" href="https://www.instagram.com/keremmvarli/">IT Destek ile İletişime Geçin</a></p>
+                    <p>Sorun mu yaşıyorsunuz? <a target="_blank" href="https://www.instagram.com/keremmvarli/">IT Destek
+                            ile İletişime Geçin</a></p>
                 </div>
             </div>
         </div>
@@ -70,19 +71,19 @@
 
     </div>
 
+    <!-- Socket.io İstemci Kütüphanesi -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <!-- JS dosyalarımız aynı kalıyor -->
     <script type="module" src="js/app.js"></script>
-    <!-- Socket.io İstemci Kütüphanesi -->
-<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
-<!-- Sunucuya Bağlanma Testi -->
-<script>
-    const socket = io('http://localhost:5001');
-    
-    socket.on('connect', () => {
-        console.log("WebSocket bağlantısı başarılı! Sunucuya bağlandık.");
-    });
-</script>
+    <!-- Sunucuya Bağlanma Testi -->
+    <script>
+        const socket = io('http://localhost:5001');
+
+        socket.on('connect', () => {
+            console.log("WebSocket bağlantısı başarılı! Sunucuya bağlandık.");
+        });
+    </script>
 
 </body>
 
