@@ -13,3 +13,6 @@ ozet.txt
 
 # İşletim sistemi kalıntıları
 .DS_Store
+
+# venv
+Python/venv/
